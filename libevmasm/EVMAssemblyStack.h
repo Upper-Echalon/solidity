@@ -33,7 +33,8 @@ namespace solidity::evmasm
 class EVMAssemblyStack: public AbstractAssemblyStack
 {
 public:
-	explicit EVMAssemblyStack(langutil::EVMVersion _evmVersion): m_evmVersion(_evmVersion) {}
+	explicit EVMAssemblyStack(langutil::EVMVersion _evmVersion, std::optional<uint8_t> _eofVersion):
+		m_evmVersion(_evmVersion), m_eofVersion(_eofVersion) {}
 
 	/// Runs parsing and analysis steps.
 	/// Multiple calls overwrite the previous state.
@@ -43,31 +44,31 @@ public:
 	/// Runs analysis steps.
 	/// Multiple calls overwrite the previous state.
 	/// @throws AssemblyImportException, if JSON could not be validated.
-	void analyze(std::string const& _sourceName, Json::Value const& _assemblyJson);
+	void analyze(std::string const& _sourceName, Json const& _assemblyJson);
 
 	void assemble();
 
 	std::string const& name() const { return m_name; }
 
-	virtual LinkerObject const& object(std::string const& _contractName) const override;
-	virtual LinkerObject const& runtimeObject(std::string const& _contractName) const override;
+	LinkerObject const& object(std::string const& _contractName) const override;
+	LinkerObject const& runtimeObject(std::string const& _contractName) const override;
 
 	std::shared_ptr<evmasm::Assembly> const& evmAssembly() const { return m_evmAssembly; }
 	std::shared_ptr<evmasm::Assembly> const& evmRuntimeAssembly() const { return m_evmRuntimeAssembly; }
 
-	virtual std::string const* sourceMapping(std::string const& _contractName) const override;
-	virtual std::string const* runtimeSourceMapping(std::string const& _contractName) const override;
+	std::string const* sourceMapping(std::string const& _contractName) const override;
+	std::string const* runtimeSourceMapping(std::string const& _contractName) const override;
 
-	virtual Json::Value assemblyJSON(std::string const& _contractName) const override;
-	virtual std::string assemblyString(std::string const& _contractName, StringMap const& _sourceCodes) const override;
+	Json assemblyJSON(std::string const& _contractName) const override;
+	std::string assemblyString(std::string const& _contractName, StringMap const& _sourceCodes) const override;
 
-	virtual std::string const filesystemFriendlyName(std::string const& _contractName) const override;
+	std::string const filesystemFriendlyName(std::string const& _contractName) const override;
 
-	virtual std::vector<std::string> contractNames() const override { return {m_name}; }
-	virtual std::vector<std::string> sourceNames() const override;
+	std::vector<std::string> contractNames() const override { return {m_name}; }
+	std::vector<std::string> sourceNames() const override;
 	std::map<std::string, unsigned> sourceIndices() const;
 
-	virtual bool compilationSuccessful() const override { return m_evmAssembly != nullptr; }
+	bool compilationSuccessful() const override { return m_evmAssembly != nullptr; }
 
 	void selectDebugInfo(langutil::DebugInfoSelection _debugInfoSelection)
 	{
@@ -76,6 +77,7 @@ public:
 
 private:
 	langutil::EVMVersion m_evmVersion;
+	std::optional<uint8_t> m_eofVersion;
 	std::string m_name;
 	std::shared_ptr<evmasm::Assembly> m_evmAssembly;
 	std::shared_ptr<evmasm::Assembly> m_evmRuntimeAssembly;

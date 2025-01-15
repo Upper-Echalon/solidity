@@ -21,20 +21,19 @@
 #include <test/libsolidity/util/SoltestErrors.h>
 
 #include <test/Common.h>
-
-#include <libsolutil/AnsiColorized.h>
+#include <test/libyul/Common.h>
 
 #include <libyul/YulStack.h>
 
-#include <libevmasm/Instruction.h>
+#include <libevmasm/Assembly.h>
 #include <libevmasm/Disassemble.h>
+#include <libevmasm/Instruction.h>
 
 #include <liblangutil/DebugInfoSelection.h>
-#include <liblangutil/SourceReferenceFormatter.h>
 
 #include <boost/algorithm/string.hpp>
 
-#include <fstream>
+#include <ostream>
 
 using namespace solidity;
 using namespace solidity::util;
@@ -45,7 +44,7 @@ using namespace solidity::frontend;
 using namespace solidity::frontend::test;
 
 ObjectCompilerTest::ObjectCompilerTest(std::string const& _filename):
-	TestCase(_filename)
+	solidity::frontend::test::EVMVersionRestrictedTestCase(_filename)
 {
 	m_source = m_reader.source();
 	m_optimisationPreset = m_reader.enumSetting<OptimisationPreset>(
@@ -63,27 +62,23 @@ ObjectCompilerTest::ObjectCompilerTest(std::string const& _filename):
 
 TestCase::TestResult ObjectCompilerTest::run(std::ostream& _stream, std::string const& _linePrefix, bool const _formatted)
 {
-	YulStack stack(
-		EVMVersion(),
-		std::nullopt,
-		YulStack::Language::StrictAssembly,
-		OptimiserSettings::preset(m_optimisationPreset),
-		DebugInfoSelection::All()
-	);
-	if (!stack.parseAndAnalyze("source", m_source))
+	YulStack yulStack = parseYul(m_source, "source", OptimiserSettings::preset(m_optimisationPreset));
+	MachineAssemblyObject obj;
+	if (!yulStack.hasErrors())
 	{
-		AnsiColorized(_stream, _formatted, {formatting::BOLD, formatting::RED}) << _linePrefix << "Error parsing source." << std::endl;
-		SourceReferenceFormatter{_stream, stack, true, false}
-			.printErrorInformation(stack.errors());
+		yulStack.optimize();
+		obj = yulStack.assemble(YulStack::Machine::EVM);
+	}
+	if (yulStack.hasErrors())
+	{
+		printYulErrors(yulStack, _stream, _linePrefix, _formatted);
 		return TestResult::FatalError;
 	}
-	stack.optimize();
 
-	MachineAssemblyObject obj = stack.assemble(YulStack::Machine::EVM);
-	solAssert(obj.bytecode, "");
-	solAssert(obj.sourceMappings, "");
+	solAssert(obj.bytecode);
+	solAssert(obj.sourceMappings);
 
-	m_obtainedResult = "Assembly:\n" + obj.assembly;
+	m_obtainedResult = "Assembly:\n" + obj.assembly->assemblyString(yulStack.debugInfoSelection());
 	if (obj.bytecode->bytecode.empty())
 		m_obtainedResult += "-- empty bytecode --\n";
 	else

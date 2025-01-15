@@ -132,6 +132,7 @@ public:
 	void endVisit(IndexRangeAccess const& _indexRangeAccess) override;
 	void endVisit(Identifier const& _identifier) override;
 	bool visit(Literal const& _literal) override;
+	void endVisit(RevertStatement const& _revertStatement) override;
 
 	bool visit(TryStatement const& _tryStatement) override;
 	bool visit(TryCatchClause const& _tryCatchClause) override;
@@ -227,6 +228,7 @@ private:
 
 	/// Assigns the value of @a _value to the lvalue @a _lvalue.
 	void writeToLValue(IRLValue const& _lvalue, IRVariable const& _value);
+
 	/// @returns a fresh IR variable containing the value of the lvalue @a _lvalue.
 	IRVariable readFromLValue(IRLValue const& _lvalue);
 

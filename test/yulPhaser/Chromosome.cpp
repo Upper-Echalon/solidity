@@ -85,8 +85,8 @@ BOOST_AUTO_TEST_CASE(makeRandom_should_use_every_possible_step_with_the_same_pro
 	const double expectedValue = double(stepIndices.size() - 1) / 2.0;
 	const double variance = double(stepIndices.size() * stepIndices.size() - 1) / 12.0;
 
-	BOOST_TEST(abs(mean(samples) - expectedValue) < expectedValue * relativeTolerance);
-	BOOST_TEST(abs(meanSquaredError(samples, expectedValue) - variance) < variance * relativeTolerance);
+	BOOST_TEST(fabs(mean(samples) - expectedValue) < expectedValue * relativeTolerance);
+	BOOST_TEST(fabs(meanSquaredError(samples, expectedValue) - variance) < variance * relativeTolerance);
 }
 
 BOOST_AUTO_TEST_CASE(constructor_should_store_genes)
@@ -159,8 +159,8 @@ BOOST_AUTO_TEST_CASE(randomOptimisationStep_should_return_each_step_with_same_pr
 	const double expectedValue = double(stepIndices.size() - 1) / 2.0;
 	const double variance = double(stepIndices.size() * stepIndices.size() - 1) / 12.0;
 
-	BOOST_TEST(abs(mean(samples) - expectedValue) < expectedValue * relativeTolerance);
-	BOOST_TEST(abs(meanSquaredError(samples, expectedValue) - variance) < variance * relativeTolerance);
+	BOOST_TEST(fabs(mean(samples) - expectedValue) < expectedValue * relativeTolerance);
+	BOOST_TEST(fabs(meanSquaredError(samples, expectedValue) - variance) < variance * relativeTolerance);
 }
 
 BOOST_AUTO_TEST_CASE(stepsToGenes_should_translate_optimisation_step_names_to_abbreviations)

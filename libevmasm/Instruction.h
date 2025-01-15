@@ -26,6 +26,7 @@
 #include <libsolutil/Common.h>
 #include <libsolutil/Assertions.h>
 #include <liblangutil/EVMVersion.h>
+#include <liblangutil/Exceptions.h>
 
 namespace solidity::evmasm
 {
@@ -104,10 +105,9 @@ enum class Instruction: uint8_t
 	MSIZE,                    ///< get the size of active memory
 	GAS,                      ///< get the amount of available gas
 	JUMPDEST,                 ///< set a potential jump destination
-	MCOPY = 0x5e,             ///< copy between memory areas
-
 	TLOAD = 0x5c,             ///< load word from transient storage
 	TSTORE = 0x5d,            ///< save word to transient storage
+	MCOPY = 0x5e,             ///< copy between memory areas
 
 	PUSH0 = 0x5f,             ///< place the value 0 on stack
 	PUSH1 = 0x60,             ///< place 1 byte item on stack
@@ -183,13 +183,25 @@ enum class Instruction: uint8_t
 	LOG3,                     ///< Makes a log entry; 3 topics.
 	LOG4,                     ///< Makes a log entry; 4 topics.
 
+	DATALOADN = 0xd1,         ///< load data from EOF data section
+
+	RJUMP = 0xe0,             ///< relative jump
+	RJUMPI = 0xe1,            ///< conditional relative jump
+	CALLF = 0xe3,             ///< call function in a EOF code section
+	RETF = 0xe4,              ///< return to caller from the code section of EOF container
+	JUMPF = 0xe5,             ///< jump to a code section of EOF container without adding a new return stack frame.
+	EOFCREATE = 0xec,         ///< create a new account with associated container code.
+	RETURNCONTRACT = 0xee,    ///< return container to be deployed with axiliary data filled in.
 	CREATE = 0xf0,            ///< create a new account with associated code
 	CALL,                     ///< message-call into an account
 	CALLCODE,                 ///< message-call with another account's code only
 	RETURN,                   ///< halt execution returning output data
 	DELEGATECALL,             ///< like CALLCODE but keeps caller's value and sender
 	CREATE2 = 0xf5,           ///< create new account with associated code at address `sha3(0xff + sender + salt + init code) % 2**160`
+	EXTCALL = 0xf8,           ///< EOF message-call into an account
+	EXTDELEGATECALL = 0xf9,   ///< EOF delegate call
 	STATICCALL = 0xfa,        ///< like CALL but disallow state modifications
+	EXTSTATICCALL = 0xfb,     ///< like EXTCALL but disallow state modifications
 
 	REVERT = 0xfd,            ///< halt execution, revert state and return output data
 	INVALID = 0xfe,           ///< invalid instruction for expressing runtime errors (e.g., division-by-zero)
@@ -205,6 +217,9 @@ constexpr bool isCallInstruction(Instruction _inst) noexcept
 		case Instruction::CALLCODE:
 		case Instruction::DELEGATECALL:
 		case Instruction::STATICCALL:
+		case Instruction::EXTCALL:
+		case Instruction::EXTSTATICCALL:
+		case Instruction::EXTDELEGATECALL:
 			return true;
 		default:
 			return false;
@@ -262,28 +277,28 @@ inline unsigned getLogNumber(Instruction _inst)
 /// @returns the PUSH<_number> instruction
 inline Instruction pushInstruction(unsigned _number)
 {
-	assertThrow(_number <= 32, InvalidOpcode, std::string("Invalid PUSH instruction requested (") + std::to_string(_number) + ").");
+	solAssert(_number <= 32);
 	return Instruction(unsigned(Instruction::PUSH0) + _number);
 }
 
 /// @returns the DUP<_number> instruction
 inline Instruction dupInstruction(unsigned _number)
 {
-	assertThrow(1 <= _number && _number <= 16, InvalidOpcode, std::string("Invalid DUP instruction requested (") + std::to_string(_number) + ").");
+	solAssert(1 <= _number && _number <= 16);
 	return Instruction(unsigned(Instruction::DUP1) + _number - 1);
 }
 
 /// @returns the SWAP<_number> instruction
 inline Instruction swapInstruction(unsigned _number)
 {
-	assertThrow(1 <= _number && _number <= 16, InvalidOpcode, std::string("Invalid SWAP instruction requested (") + std::to_string(_number) + ").");
+	solAssert(1 <= _number && _number <= 16);
 	return Instruction(unsigned(Instruction::SWAP1) + _number - 1);
 }
 
 /// @returns the LOG<_number> instruction
 inline Instruction logInstruction(unsigned _number)
 {
-	assertThrow(_number <= 4, InvalidOpcode, std::string("Invalid LOG instruction requested (") + std::to_string(_number) + ").");
+	solAssert(_number <= 4);
 	return Instruction(unsigned(Instruction::LOG0) + _number);
 }
 
@@ -296,8 +311,13 @@ enum class Tier
 	// NOTE: Tiers should be ordered by cost, since we sometimes perform comparisons between them.
 	Zero = 0,   // 0, Zero
 	Base,       // 2, Quick
+	RJump,      // 2, RJump
 	VeryLow,    // 3, Fastest
+	RetF,       // 3,
+	RJumpI,     // 4,
 	Low,        // 5, Fast
+	CallF,      // 5,
+	JumpF,      // 5,
 	Mid,        // 8, Mid
 	High,       // 10, Slow
 	BlockHash,  // 20

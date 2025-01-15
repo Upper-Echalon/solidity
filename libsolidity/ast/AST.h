@@ -34,8 +34,7 @@
 #include <libsolutil/FixedHash.h>
 #include <libsolutil/LazyInit.h>
 #include <libsolutil/Visitor.h>
-
-#include <json/json.h>
+#include <libsolutil/JSON.h>
 
 #include <range/v3/view/subrange.hpp>
 #include <range/v3/view/map.hpp>
@@ -49,8 +48,8 @@
 namespace solidity::yul
 {
 // Forward-declaration to <yul/AST.h>
-struct Block;
-struct Dialect;
+class AST;
+class Dialect;
 }
 
 namespace solidity::frontend
@@ -194,6 +193,12 @@ public:
 	bool experimentalSolidity() const { return m_experimentalSolidity; }
 
 private:
+	void referencedSourceUnits(
+		std::set<SourceUnit const*>& _referencedSourceUnits,
+		bool _recurse,
+		std::set<SourceUnit const*>& _skipList
+	) const;
+
 	std::optional<std::string> m_licenseString;
 	std::vector<ASTPointer<ASTNode>> m_nodes;
 	bool m_experimentalSolidity = false;
@@ -1053,7 +1058,7 @@ private:
 class VariableDeclaration: public Declaration, public StructurallyDocumented
 {
 public:
-	enum Location { Unspecified, Storage, Memory, CallData };
+	enum Location { Unspecified, Storage, Transient, Memory, CallData };
 	enum class Mutability { Mutable, Immutable, Constant };
 	static std::string mutabilityToString(Mutability _mutability)
 	{
@@ -1570,7 +1575,7 @@ public:
 		ASTPointer<ASTString> const& _docString,
 		yul::Dialect const& _dialect,
 		ASTPointer<std::vector<ASTPointer<ASTString>>> _flags,
-		std::shared_ptr<yul::Block> _operations
+		std::shared_ptr<yul::AST> _operations
 	):
 		Statement(_id, _location, _docString),
 		m_dialect(_dialect),
@@ -1581,7 +1586,7 @@ public:
 	void accept(ASTConstVisitor& _visitor) const override;
 
 	yul::Dialect const& dialect() const { return m_dialect; }
-	yul::Block const& operations() const { return *m_operations; }
+	yul::AST const& operations() const { return *m_operations; }
 	ASTPointer<std::vector<ASTPointer<ASTString>>> const& flags() const { return m_flags; }
 
 	InlineAssemblyAnnotation& annotation() const override;
@@ -1589,7 +1594,7 @@ public:
 private:
 	yul::Dialect const& m_dialect;
 	ASTPointer<std::vector<ASTPointer<ASTString>>> m_flags;
-	std::shared_ptr<yul::Block> m_operations;
+	std::shared_ptr<yul::AST> m_operations;
 };
 
 /**

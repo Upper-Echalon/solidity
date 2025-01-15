@@ -7,6 +7,12 @@ Value Types
 The following are called value types because their variables will always be passed by value, i.e. they are always copied when they
 are used as function arguments or in assignments.
 
+Unlike :ref:`reference types <reference-types>`, value type declarations do not
+specify a data location since they are small enough to be stored on the stack.
+The only exception is :ref:`state variables <structure-state-variables>`.
+Those are by default located in storage, but can also be marked as
+:ref:`transient <transient-storage>`, :ref:`constant or immutable <constants>`.
+
 .. index:: ! bool, ! true, ! false
 
 Booleans
@@ -198,7 +204,7 @@ must be explicit via ``payable(<address>)``.
 Explicit conversions to and from ``address`` are allowed for ``uint160``, integer literals,
 ``bytes20`` and contract types.
 
-Only expressions of type ``address`` and contract-type can be converted to the type ``address
+Only expressions of type ``address`` and contract type can be converted to the type ``address
 payable`` via the explicit conversion ``payable(...)``. For contract-type, this conversion is only
 allowed if the contract can receive Ether, i.e., the contract either has a :ref:`receive
 <receive-ether-function>` or a payable fallback function. Note that ``payable(0)`` is valid and is
@@ -209,7 +215,7 @@ an exception to this rule.
     declare its type as ``address payable`` to make this requirement visible. Also,
     try to make this distinction or conversion as early as possible.
 
-    The distinction between ``address`` and ``address payable`` was introduced with version 0.5.0.
+    The distinction between ``address`` and ``address payable`` was introduced in version 0.5.0.
     Also starting from that version, contracts are not implicitly convertible to the ``address`` type, but can still be explicitly converted to
     ``address`` or to ``address payable``, if they have a receive or payable fallback function.
 
@@ -337,6 +343,13 @@ on ``call``.
 You can query the deployed code for any smart contract. Use ``.code`` to get the EVM bytecode as a
 ``bytes memory``, which might be empty. Use ``.codehash`` to get the Keccak-256 hash of that code
 (as a ``bytes32``). Note that ``addr.codehash`` is cheaper than using ``keccak256(addr.code)``.
+
+.. warning::
+    The output of ``addr.codehash`` may be ``0`` if the account associated with ``addr`` is empty or non-existent
+    (i.e., it has no code, zero balance, and zero nonce as defined by `EIP-161 <https://eips.ethereum.org/EIPS/eip-161>`_).
+    If the account has no code but a non-zero balance or nonce, then ``addr.codehash`` will output the Keccak-256 hash of empty data
+    (i.e., ``keccak256("")`` which is equal to ``c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470``), as defined by
+    `EIP-1052 <https://eips.ethereum.org/EIPS/eip-1052>`_.
 
 .. note::
     All contracts can be converted to ``address`` type, so it is possible to query the balance of the

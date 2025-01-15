@@ -22,19 +22,45 @@
 # (c) 2016-2021 solidity contributors.
 #------------------------------------------------------------------------------
 FROM gcr.io/oss-fuzz-base/base-clang:latest as base
-LABEL version="5"
+LABEL version="8"
 
 ARG DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update; \
 	apt-get -qqy install --no-install-recommends \
-		automake libtool bison texinfo \
-		build-essential sudo \
+		automake \
+		bison \
+		build-essential \
+		curl \
+		git \
+		jq \
+		libbz2-dev \
+		liblzma-dev \
+		libtool \
+		lsof \
+		m4 \
+		mlton \
+		ninja-build \
+		openjdk-8-jdk \
+		pkg-config \
+		python3-pip \
 		software-properties-common \
-		ninja-build git wget \
-		libbz2-dev zlib1g-dev git curl uuid-dev \
-		pkg-config openjdk-8-jdk liblzma-dev unzip mlton m4 jq; \
-    apt-get install -qy python3-pip;
+		sudo \
+		texinfo \
+		unzip \
+		uuid-dev \
+		wget \
+		zlib1g-dev; \
+	pip3 install \
+		codecov \
+		colorama \
+		deepdiff \
+		parsec \
+		pygments-lexer-solidity \
+		pylint \
+		requests \
+		tabulate \
+		z3-solver;
 
 # Install cmake 3.21.2 (minimum requirement is cmake 3.10)
 RUN wget https://github.com/Kitware/CMake/releases/download/v3.21.2/cmake-3.21.2-Linux-x86_64.sh; \
@@ -47,7 +73,7 @@ FROM base AS libraries
 # Boost
 RUN set -ex; \
     cd /usr/src; \
-    wget -q 'https://boostorg.jfrog.io/artifactory/main/release/1.74.0/source/boost_1_74_0.tar.bz2' -O boost.tar.bz2; \
+    wget -q 'https://archives.boost.io/release/1.74.0/source/boost_1_74_0.tar.bz2' -O boost.tar.bz2; \
     test "$(sha256sum boost.tar.bz2)" = "83bfc1507731a0906e387fc28b7ef5417d591429e51e788417fe9ff025e116b1  boost.tar.bz2" && \
     tar -xf boost.tar.bz2; \
     rm boost.tar.bz2; \
@@ -82,6 +108,17 @@ RUN set -ex; \
 	test "$(sha256sum /opt/eld_binaries.zip)" = "0ac43f45c0925383c9d2077f62bbb515fd792375f3b2b101b30c9e81dcd7785c  /opt/eld_binaries.zip"; \
 	unzip /opt/eld_binaries.zip -d /opt; \
 	rm -f /opt/eld_binaries.zip;
+
+# CVC5
+RUN set -ex; \
+	cvc5_version="1.1.2"; \
+	wget "https://github.com/cvc5/cvc5/releases/download/cvc5-${cvc5_version}/cvc5-Linux-static.zip" -O /opt/cvc5.zip; \
+	test "$(sha256sum /opt/cvc5.zip)" = "cf291aef67da8eaa8d425a51f67f3f72f36db8b1040655dc799b64e3d69e6086  /opt/cvc5.zip"; \
+	unzip /opt/cvc5.zip -x "cvc5-Linux-static/lib/cmake/*" -d /opt; \
+	mv /opt/cvc5-Linux-static/bin/* /usr/bin; \
+	mv /opt/cvc5-Linux-static/include/* /usr/include; \
+	mv /opt/cvc5-Linux-static/lib/* /usr/lib; \
+	rm -rf /opt/cvc5-Linux-static /opt/cvc5.zip;
 
 # OSSFUZZ: libprotobuf-mutator
 RUN set -ex; \
@@ -146,10 +183,6 @@ RUN set -ex; \
     cp libabicoder.a /usr/lib; \
     cp abicoder.hpp /usr/include; \
     rm -rf /usr/src/Yul-Isabelle
-
-# Cleanup
-RUN set -ex; \
-	rm -rf /var/lib/apt/lists/*
 
 FROM base
 COPY --from=libraries /usr/lib /usr/lib
