@@ -42,6 +42,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <iosfwd>
 #include <string>
 #include <tuple>
@@ -376,7 +377,7 @@ namespace TokenTraits
 		return _token > Token::NonExperimentalEnd && _token < Token::ExperimentalEnd;
 	}
 
-	bool isYulKeyword(std::string const& _literal);
+	bool isYulKeyword(std::string_view _literal);
 
 	Token AssignmentToBinaryOp(Token op);
 

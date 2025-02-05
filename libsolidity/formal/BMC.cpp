@@ -18,8 +18,11 @@
 
 #include <libsolidity/formal/BMC.h>
 
+#include <libsolidity/formal/Cvc5SMTLib2Interface.h>
 #include <libsolidity/formal/SymbolicTypes.h>
+#include <libsolidity/formal/Z3SMTLib2Interface.h>
 
+#include <libsmtutil/SMTLib2Interface.h>
 #include <libsmtutil/SMTPortfolio.h>
 
 #include <liblangutil/CharStream.h>
@@ -27,53 +30,46 @@
 
 #include <utility>
 
-#ifdef HAVE_Z3_DLOPEN
-#include <z3_version.h>
-#endif
-
 using namespace solidity;
 using namespace solidity::util;
 using namespace solidity::langutil;
 using namespace solidity::frontend;
+using namespace solidity::frontend::smt;
+using namespace solidity::smtutil;
 
 BMC::BMC(
 	smt::EncodingContext& _context,
 	UniqueErrorReporter& _errorReporter,
 	UniqueErrorReporter& _unsupportedErrorReporter,
+	ErrorReporter& _provedSafeReporter,
 	std::map<h256, std::string> const& _smtlib2Responses,
 	ReadCallback::Callback const& _smtCallback,
 	ModelCheckerSettings _settings,
 	CharStreamProvider const& _charStreamProvider
 ):
-	SMTEncoder(_context, _settings, _errorReporter, _unsupportedErrorReporter, _charStreamProvider),
-	m_interface(std::make_unique<smtutil::SMTPortfolio>(
-		_smtlib2Responses, _smtCallback, _settings.solvers, _settings.timeout, _settings.printQuery
-	))
+	SMTEncoder(_context, _settings, _errorReporter, _unsupportedErrorReporter, _provedSafeReporter, _charStreamProvider)
 {
-	solAssert(!_settings.printQuery || _settings.solvers == smtutil::SMTSolverChoice::SMTLIB2(), "Only SMTLib2 solver can be enabled to print queries");
-#if defined (HAVE_Z3) || defined (HAVE_CVC4)
-	if (m_settings.solvers.cvc4 || m_settings.solvers.z3)
-		if (!_smtlib2Responses.empty())
-			m_errorReporter.warning(
-				5622_error,
-				"SMT-LIB2 query responses were given in the auxiliary input, "
-				"but this Solidity binary uses an SMT solver (Z3/CVC4) directly."
-				"These responses will be ignored."
-				"Consider disabling Z3/CVC4 at compilation time in order to use SMT-LIB2 responses."
-			);
-#endif
+	solAssert(!_settings.printQuery || _settings.solvers == SMTSolverChoice::SMTLIB2(), "Only SMTLib2 solver can be enabled to print queries");
+	std::vector<std::unique_ptr<BMCSolverInterface>> solvers;
+	if (_settings.solvers.smtlib2)
+		solvers.emplace_back(std::make_unique<SMTLib2Interface>(_smtlib2Responses, _smtCallback, _settings.timeout));
+	if (_settings.solvers.cvc5)
+		solvers.emplace_back(std::make_unique<Cvc5SMTLib2Interface>(_smtCallback, _settings.timeout));
+	if (_settings.solvers.z3 )
+		solvers.emplace_back(std::make_unique<Z3SMTLib2Interface>(_smtCallback, _settings.timeout));
+	m_interface = std::make_unique<SMTPortfolio>(std::move(solvers), _settings.timeout);
 }
 
 void BMC::analyze(SourceUnit const& _source, std::map<ASTNode const*, std::set<VerificationTargetType>, smt::EncodingContext::IdCompare> _solvedTargets)
 {
 	// At this point every enabled solver is available.
-	if (!m_settings.solvers.cvc4 && !m_settings.solvers.smtlib2 && !m_settings.solvers.z3)
+	if (!m_settings.solvers.cvc5 && !m_settings.solvers.smtlib2 && !m_settings.solvers.z3)
 	{
 		m_errorReporter.warning(
 			7710_error,
 			SourceLocation(),
 			"BMC analysis was not possible since no SMT solver was found and enabled."
-			" The accepted solvers for BMC are cvc4 and z3."
+			" The accepted solvers for BMC are cvc5 and z3."
 		);
 		return;
 	}
@@ -86,7 +82,9 @@ void BMC::analyze(SourceUnit const& _source, std::map<ASTNode const*, std::set<V
 	m_context.reset();
 	m_context.setAssertionAccumulation(true);
 	m_variableUsage.setFunctionInlining(shouldInlineFunctionCall);
-	createFreeConstants(sourceDependencies(_source));
+	auto const& sources = sourceDependencies(_source);
+	createFreeConstants(sources);
+	createStateVariables(sources);
 	m_unprovedAmt = 0;
 
 	_source.accept(*this);
@@ -104,17 +102,22 @@ void BMC::analyze(SourceUnit const& _source, std::map<ASTNode const*, std::set<V
 		);
 
 	if (!m_settings.showProvedSafe && !m_safeTargets.empty())
+	{
+		std::size_t provedSafeNum = 0;
+		for (auto&& [_, targets]: m_safeTargets)
+			provedSafeNum += targets.size();
 		m_errorReporter.info(
 			6002_error,
 			"BMC: " +
-			std::to_string(m_safeTargets.size()) +
+			std::to_string(provedSafeNum) +
 			" verification condition(s) proved safe!" +
 			" Enable the model checker option \"show proved safe\" to see all of them."
 		);
+	}
 	else if (m_settings.showProvedSafe)
 		for (auto const& [node, targets]: m_safeTargets)
 			for (auto const& target: targets)
-				m_errorReporter.info(
+				m_provedSafeReporter.info(
 					2961_error,
 					node->location(),
 					"BMC: " +
@@ -122,8 +125,7 @@ void BMC::analyze(SourceUnit const& _source, std::map<ASTNode const*, std::set<V
 					" check is safe!"
 				);
 
-
-	// If this check is true, Z3 and CVC4 are not available
+	// If this check is true, Z3 and cvc5 are not available
 	// and the query answers were not provided, since SMTPortfolio
 	// guarantees that SmtLib2Interface is the first solver, if enabled.
 	if (
@@ -134,11 +136,8 @@ void BMC::analyze(SourceUnit const& _source, std::map<ASTNode const*, std::set<V
 		m_errorReporter.warning(
 			8084_error,
 			SourceLocation(),
-			"BMC analysis was not possible. No SMT solver (Z3 or CVC4) was available."
+			"BMC analysis was not possible. No SMT solver (Z3 or cvc5) was available."
 			" None of the installed solvers was enabled."
-#ifdef HAVE_Z3_DLOPEN
-			" Install libz3.so." + std::to_string(Z3_MAJOR_VERSION) + "." + std::to_string(Z3_MINOR_VERSION) + " to enable Z3."
-#endif
 		);
 }
 
@@ -165,6 +164,9 @@ bool BMC::shouldInlineFunctionCall(
 
 bool BMC::visit(ContractDefinition const& _contract)
 {
+	// Raises UnimplementedFeatureError in the presence of transient storage variables
+	TransientDataLocationChecker checker(_contract);
+
 	initContract(_contract);
 
 	SMTEncoder::visit(_contract);
@@ -376,7 +378,7 @@ bool BMC::visit(WhileStatement const& _node)
 			auto indices = copyVariableIndices();
 			_node.condition().accept(*this);
 			loopCondition = expr(_node.condition());
-			// asseert that the loop is complete
+			// assert that the loop is complete
 			m_context.addAssertion(!loopCondition || broke || !loopConditionOnPreviousIterations);
 			mergeVariables(
 				broke || !loopConditionOnPreviousIterations,
@@ -569,11 +571,18 @@ void BMC::endVisit(UnaryOperation const& _op)
 		return;
 
 	if (_op.getOperator() == Token::Sub && smt::isInteger(*_op.annotation().type))
+	{
 		addVerificationTarget(
-			VerificationTargetType::UnderOverflow,
+			VerificationTargetType::Underflow,
 			expr(_op),
 			&_op
 		);
+		addVerificationTarget(
+			VerificationTargetType::Overflow,
+			expr(_op),
+			&_op
+		);
+	}
 }
 
 void BMC::endVisit(BinaryOperation const& _op)
@@ -644,6 +653,7 @@ void BMC::endVisit(FunctionCall const& _funCall)
 	case FunctionType::Kind::ECRecover:
 	case FunctionType::Kind::SHA256:
 	case FunctionType::Kind::RIPEMD160:
+	case FunctionType::Kind::BlobHash:
 	case FunctionType::Kind::BlockHash:
 	case FunctionType::Kind::AddMod:
 	case FunctionType::Kind::MulMod:
@@ -813,32 +823,29 @@ std::pair<smtutil::Expression, smtutil::Expression> BMC::arithmeticOperation(
 	if (_op == Token::Mod)
 		return values;
 
-	VerificationTargetType type;
 	// The order matters here:
 	// If _op is Div and intType is signed, we only care about overflow.
 	if (_op == Token::Div)
 	{
 		if (intType->isSigned())
 			// Signed division can only overflow.
-			type = VerificationTargetType::Overflow;
+			addVerificationTarget(VerificationTargetType::Overflow, values.second, &_expression);
 		else
 			// Unsigned division cannot underflow/overflow.
 			return values;
 	}
 	else if (intType->isSigned())
-		type = VerificationTargetType::UnderOverflow;
+	{
+		addVerificationTarget(VerificationTargetType::Overflow, values.second, &_expression);
+		addVerificationTarget(VerificationTargetType::Underflow, values.second, &_expression);
+	}
 	else if (_op == Token::Sub)
-		type = VerificationTargetType::Underflow;
+		addVerificationTarget(VerificationTargetType::Underflow, values.second, &_expression);
 	else if (_op == Token::Add || _op == Token::Mul)
-		type = VerificationTargetType::Overflow;
+		addVerificationTarget(VerificationTargetType::Overflow, values.second, &_expression);
 	else
 		solAssert(false, "");
 
-	addVerificationTarget(
-		type,
-		values.second,
-		&_expression
-	);
 	return values;
 }
 
@@ -919,6 +926,12 @@ void BMC::checkVerificationTargets()
 
 void BMC::checkVerificationTarget(BMCVerificationTarget& _target)
 {
+	if (
+		m_solvedTargets.count(_target.expression) &&
+		m_solvedTargets.at(_target.expression).count(_target.type)
+	)
+		return;
+
 	switch (_target.type)
 	{
 		case VerificationTargetType::ConstantCondition:
@@ -928,10 +941,6 @@ void BMC::checkVerificationTarget(BMCVerificationTarget& _target)
 			checkUnderflow(_target);
 			break;
 		case VerificationTargetType::Overflow:
-			checkOverflow(_target);
-			break;
-		case VerificationTargetType::UnderOverflow:
-			checkUnderflow(_target);
 			checkOverflow(_target);
 			break;
 		case VerificationTargetType::DivByZero:
@@ -961,18 +970,9 @@ void BMC::checkConstantCondition(BMCVerificationTarget& _target)
 void BMC::checkUnderflow(BMCVerificationTarget& _target)
 {
 	solAssert(
-		_target.type == VerificationTargetType::Underflow ||
-			_target.type == VerificationTargetType::UnderOverflow,
+		_target.type == VerificationTargetType::Underflow,
 		""
 	);
-
-	if (
-		m_solvedTargets.count(_target.expression) && (
-			m_solvedTargets.at(_target.expression).count(VerificationTargetType::Underflow) ||
-			m_solvedTargets.at(_target.expression).count(VerificationTargetType::UnderOverflow)
-		)
-	)
-		return;
 
 	auto const* intType = dynamic_cast<IntegerType const*>(_target.expression->annotation().type);
 	if (!intType)
@@ -994,18 +994,9 @@ void BMC::checkUnderflow(BMCVerificationTarget& _target)
 void BMC::checkOverflow(BMCVerificationTarget& _target)
 {
 	solAssert(
-		_target.type == VerificationTargetType::Overflow ||
-			_target.type == VerificationTargetType::UnderOverflow,
+		_target.type == VerificationTargetType::Overflow,
 		""
 	);
-
-	if (
-		m_solvedTargets.count(_target.expression) && (
-			m_solvedTargets.at(_target.expression).count(VerificationTargetType::Overflow) ||
-			m_solvedTargets.at(_target.expression).count(VerificationTargetType::UnderOverflow)
-		)
-	)
-		return;
 
 	auto const* intType = dynamic_cast<IntegerType const*>(_target.expression->annotation().type);
 	if (!intType)
@@ -1028,12 +1019,6 @@ void BMC::checkDivByZero(BMCVerificationTarget& _target)
 {
 	solAssert(_target.type == VerificationTargetType::DivByZero, "");
 
-	if (
-		m_solvedTargets.count(_target.expression) &&
-		m_solvedTargets.at(_target.expression).count(VerificationTargetType::DivByZero)
-	)
-		return;
-
 	checkCondition(
 		_target,
 		_target.constraints && (_target.value == 0),
@@ -1050,6 +1035,7 @@ void BMC::checkDivByZero(BMCVerificationTarget& _target)
 void BMC::checkBalance(BMCVerificationTarget& _target)
 {
 	solAssert(_target.type == VerificationTargetType::Balance, "");
+
 	checkCondition(
 		_target,
 		_target.constraints && _target.value,
@@ -1065,12 +1051,6 @@ void BMC::checkBalance(BMCVerificationTarget& _target)
 void BMC::checkAssert(BMCVerificationTarget& _target)
 {
 	solAssert(_target.type == VerificationTargetType::Assert, "");
-
-	if (
-		m_solvedTargets.count(_target.expression) &&
-		m_solvedTargets.at(_target.expression).count(_target.type)
-	)
-		return;
 
 	checkCondition(
 		_target,
@@ -1202,7 +1182,7 @@ void BMC::checkCondition(
 		m_errorReporter.warning(1584_error, _location, "BMC: At least two SMT solvers provided conflicting answers. Results might not be sound.");
 		break;
 	case smtutil::CheckResult::ERROR:
-		m_errorReporter.warning(1823_error, _location, "BMC: Error trying to invoke SMT solver.");
+		m_errorReporter.warning(1823_error, _location, "BMC: Error during interaction with the SMT solver.");
 		break;
 	}
 

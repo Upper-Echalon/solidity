@@ -5,6 +5,7 @@ add_library(yul
 	AsmAnalysis.h
 	AsmAnalysisInfo.h
 	AST.h
+	AST.cpp
 	ASTForward.h
 	AsmJsonConverter.h
 	AsmJsonConverter.cpp
@@ -14,6 +15,7 @@ add_library(yul
 	AsmParser.h
 	AsmPrinter.cpp
 	AsmPrinter.h
+	Builtins.h
 	YulStack.h
 	YulStack.cpp
 	CompilabilityChecker.cpp
@@ -28,6 +30,8 @@ add_library(yul
 	FunctionReferenceResolver.h
 	Object.cpp
 	Object.h
+	ObjectOptimizer.cpp
+	ObjectOptimizer.h
 	ObjectParser.cpp
 	ObjectParser.h
 	Scope.cpp
@@ -36,12 +40,17 @@ add_library(yul
 	ScopeFiller.h
 	Utilities.cpp
 	Utilities.h
+	YulControlFlowGraphExporter.h
+	YulControlFlowGraphExporter.cpp
+	YulName.h
 	YulString.h
 	backends/evm/AbstractAssembly.h
 	backends/evm/AsmCodeGen.cpp
 	backends/evm/AsmCodeGen.h
 	backends/evm/ConstantOptimiser.cpp
 	backends/evm/ConstantOptimiser.h
+	backends/evm/ControlFlow.cpp
+	backends/evm/ControlFlow.h
 	backends/evm/ControlFlowGraph.h
 	backends/evm/ControlFlowGraphBuilder.cpp
 	backends/evm/ControlFlowGraphBuilder.h
@@ -59,6 +68,16 @@ add_library(yul
 	backends/evm/NoOutputAssembly.cpp
 	backends/evm/OptimizedEVMCodeTransform.cpp
 	backends/evm/OptimizedEVMCodeTransform.h
+	backends/evm/SSACFGLiveness.cpp
+	backends/evm/SSACFGLiveness.h
+	backends/evm/SSACFGLoopNestingForest.cpp
+	backends/evm/SSACFGLoopNestingForest.h
+	backends/evm/SSACFGTopologicalSort.cpp
+	backends/evm/SSACFGTopologicalSort.h
+	backends/evm/SSAControlFlowGraph.cpp
+	backends/evm/SSAControlFlowGraph.h
+	backends/evm/SSAControlFlowGraphBuilder.cpp
+	backends/evm/SSAControlFlowGraphBuilder.h
 	backends/evm/StackHelpers.h
 	backends/evm/StackLayoutGenerator.cpp
 	backends/evm/StackLayoutGenerator.h
@@ -173,8 +192,6 @@ add_library(yul
 	optimiser/Suite.h
 	optimiser/SyntacticalEquality.cpp
 	optimiser/SyntacticalEquality.h
-	optimiser/TypeInfo.cpp
-	optimiser/TypeInfo.h
 	optimiser/UnusedFunctionParameterPruner.cpp
 	optimiser/UnusedFunctionParameterPruner.h
 	optimiser/UnusedFunctionsCommon.h

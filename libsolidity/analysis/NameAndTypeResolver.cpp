@@ -30,6 +30,7 @@
 #include <boost/algorithm/string.hpp>
 #include <unordered_set>
 
+using namespace std::string_literals;
 using namespace solidity::langutil;
 
 namespace solidity::frontend
@@ -60,10 +61,9 @@ bool NameAndTypeResolver::registerDeclarations(SourceUnit& _sourceUnit, ASTNode 
 	{
 		DeclarationRegistrationHelper registrar(m_scopes, _sourceUnit, m_errorReporter, m_globalContext, _currentScope);
 	}
-	catch (langutil::FatalError const&)
+	catch (langutil::FatalError const& error)
 	{
-		if (m_errorReporter.errors().empty())
-			throw; // Something is weird here, rather throw again.
+		solAssert(m_errorReporter.hasErrors(), "Unreported fatal error: "s + error.what());
 		return false;
 	}
 	return true;
@@ -135,10 +135,9 @@ bool NameAndTypeResolver::resolveNamesAndTypes(SourceUnit& _source)
 				return false;
 		}
 	}
-	catch (langutil::FatalError const&)
+	catch (langutil::FatalError const& error)
 	{
-		if (m_errorReporter.errors().empty())
-			throw; // Something is weird here, rather throw again.
+		solAssert(m_errorReporter.hasErrors(), "Unreported fatal error: "s + error.what());
 		return false;
 	}
 	return true;
@@ -151,10 +150,9 @@ bool NameAndTypeResolver::updateDeclaration(Declaration const& _declaration)
 		m_scopes[nullptr]->registerDeclaration(_declaration, false, true);
 		solAssert(_declaration.scope() == nullptr, "Updated declaration outside global scope.");
 	}
-	catch (langutil::FatalError const&)
+	catch (langutil::FatalError const& error)
 	{
-		if (m_errorReporter.errors().empty())
-			throw; // Something is weird here, rather throw again.
+		solAssert(m_errorReporter.hasErrors(), "Unreported fatal error: "s + error.what());
 		return false;
 	}
 	return true;
@@ -718,7 +716,7 @@ void DeclarationRegistrationHelper::registerDeclaration(Declaration& _declaratio
 		);
 
 		// NOTE: We're registering the function outside of its scope(). This will only affect
-		// name lookups. An more general alternative would be to modify Scoper to simply assign it
+		// name lookups. A more general alternative would be to modify Scoper to simply assign it
 		// that scope in the first place, but this would complicate the AST traversal here, which
 		// currently assumes that scopes follow ScopeOpener nesting.
 		registerDeclaration(*m_scopes.at(quantifier->scope()), _declaration, nullptr, nullptr, false /* inactive */, m_errorReporter);

@@ -148,7 +148,7 @@ BOOST_AUTO_TEST_CASE(version)
 
 BOOST_AUTO_TEST_CASE(multiple_input_modes)
 {
-	std::array<std::string, 10> inputModeOptions = {
+	std::array inputModeOptions {
 		"--help",
 		"--license",
 		"--version",
@@ -156,17 +156,16 @@ BOOST_AUTO_TEST_CASE(multiple_input_modes)
 		"--link",
 		"--assemble",
 		"--strict-assembly",
-		"--yul",
 		"--import-ast",
 		"--import-asm-json",
 	};
 	std::string expectedMessage =
 		"The following options are mutually exclusive: "
-		"--help, --license, --version, --standard-json, --link, --assemble, --strict-assembly, --yul, --import-ast, --lsp, --import-asm-json. "
+		"--help, --license, --version, --standard-json, --link, --assemble, --strict-assembly, --import-ast, --lsp, --import-asm-json. "
 		"Select at most one.";
 
-	for (std::string const& mode1: inputModeOptions)
-		for (std::string const& mode2: inputModeOptions)
+	for (auto const& mode1: inputModeOptions)
+		for (auto const& mode2: inputModeOptions)
 			if (mode1 != mode2)
 				BOOST_CHECK_EXCEPTION(
 					parseCommandLineAndReadInputFiles({"solc", mode1, mode2}),
@@ -239,6 +238,29 @@ BOOST_AUTO_TEST_CASE(cli_input)
 	BOOST_CHECK_EQUAL(result.options.input.remappings, expectedRemappings);
 	BOOST_CHECK_EQUAL(result.reader.sourceUnits(), expectedSources);
 	BOOST_CHECK_EQUAL(result.reader.allowedDirectories(), expectedAllowedPaths);
+}
+
+BOOST_AUTO_TEST_CASE(cli_optimizer_disabled_yul_optimization_input_whitespaces_or_empty)
+{
+	TemporaryDirectory tempDir(TEST_CASE_NAME);
+	createFilesWithParentDirs({tempDir.path() / "input.sol"});
+	createFilesWithParentDirs({tempDir.path() / "input.yul"});
+
+	std::string const expectedMessage =
+		"--yul-optimizations is invalid with a non-empty sequence if Yul optimizer is disabled."
+		" Note that the empty optimizer sequence is properly denoted by \":\".";
+	std::vector<std::vector<std::string>> const commandVariations = {
+		{"solc", "--strict-assembly", "--yul-optimizations", "", (tempDir.path() / "input.yul").string()},
+		{"solc", "--strict-assembly", "--yul-optimizations", "   ", (tempDir.path() / "input.yul").string()},
+		{"solc", "--yul-optimizations", "", (tempDir.path() / "input.sol").string()},
+		{"solc", "--yul-optimizations", "   ", (tempDir.path() / "input.sol").string()},
+	};
+	for (auto const& command: commandVariations)
+		BOOST_CHECK_EXCEPTION(
+			parseCommandLineAndReadInputFiles(command),
+			CommandLineValidationError,
+			[&](auto const& _exception) { BOOST_TEST(_exception.what() == expectedMessage); return true; }
+		);
 }
 
 BOOST_AUTO_TEST_CASE(cli_ignore_missing_some_files_exist)
@@ -1157,15 +1179,20 @@ BOOST_AUTO_TEST_CASE(standard_json_include_paths)
 
 	OptionsReaderAndMessages result = runCLI(commandLine, standardJsonInput);
 
-	Json::Value parsedStdout;
+	Json parsedStdout;
 	std::string jsonParsingErrors;
 	BOOST_TEST(util::jsonParseStrict(result.stdoutContent, parsedStdout, &jsonParsingErrors));
 	BOOST_TEST(jsonParsingErrors == "");
-	for (Json::Value const& errorDict: parsedStdout["errors"])
+	for (Json const& errorDict: parsedStdout["errors"])
 		// The error list might contain pre-release compiler warning
 		BOOST_TEST(errorDict["severity"] != "error");
+	// we might be able to use ranges again, but the nlohmann::json support is not yet fully there.
+	// (parsedStdout["sources"].items() | ranges::views::keys | ranges::to<std::set>)
+	std::set<std::string> sources;
+	for (auto const& [key, _]: parsedStdout["sources"].items())
+		sources.insert(key);
 	BOOST_TEST(
-		(parsedStdout["sources"].getMemberNames() | ranges::to<std::set>) ==
+		sources ==
 		(expectedSources | ranges::views::keys | ranges::to<std::set>) + std::set<std::string>{"main.sol"}
 	);
 
@@ -1383,6 +1410,369 @@ BOOST_AUTO_TEST_CASE(cli_include_paths_ambiguous_import)
 	OptionsReaderAndMessages result = runCLI(commandLine, mainContractSource);
 	BOOST_TEST(result.stderrContent == expectedMessage);
 	BOOST_REQUIRE(!result.success);
+}
+
+BOOST_AUTO_TEST_CASE(cli_ethdebug_no_ethdebug_in_help)
+{
+	OptionsReaderAndMessages result = runCLI({"solc", "--help"});
+	BOOST_REQUIRE(result.stdoutContent.find("ethdebug") == std::string::npos);
+	// just in case
+	BOOST_REQUIRE(result.stderrContent.find("ethdebug") == std::string::npos);
+}
+
+BOOST_AUTO_TEST_CASE(cli_ethdebug_incompatible_outputs)
+{
+	TemporaryDirectory tempDir(TEST_CASE_NAME);
+	createFilesWithParentDirs({tempDir.path() / "input.sol"});
+	static std::vector<std::pair<std::vector<std::string>, std::string>> tests{
+		{
+			{"solc", "--ethdebug",  "--asm-json", tempDir.path().string() + "/input.sol"},
+			"Error: --ethdebug / --ethdebug-runtime output can only be selected, if --via-ir was specified.\n"
+		},
+		{
+			{"solc", "--via-ir", "--ethdebug",  "--asm-json", tempDir.path().string() + "/input.sol"},
+			"Error: --ethdebug / --ethdebug-runtime output can only be used with --ir. Optimization is not yet supported with ethdebug, e.g. no support for --optimize / --ir-optimized yet.\n"
+		},
+		{
+			{"solc", "--via-ir", "--ethdebug",  "--optimize", tempDir.path().string() + "/input.sol"},
+			"Error: --ethdebug / --ethdebug-runtime output can only be used with --ir. Optimization is not yet supported with ethdebug, e.g. no support for --optimize / --ir-optimized yet.\n"
+		},
+		{
+			{"solc", "--via-ir", "--ethdebug",  "--ir-optimized", tempDir.path().string() + "/input.sol"},
+			"Error: --ethdebug / --ethdebug-runtime output can only be used with --ir. Optimization is not yet supported with ethdebug, e.g. no support for --optimize / --ir-optimized yet.\n"
+		},
+		{
+			{"solc", "--via-ir", "--ethdebug",  "--ir-ast-json", tempDir.path().string() + "/input.sol"},
+			"Error: --ethdebug / --ethdebug-runtime output can only be used with --ir. Optimization is not yet supported with ethdebug, e.g. no support for --optimize / --ir-optimized yet.\n"
+		},
+		{
+			{"solc", "--via-ir", "--ethdebug",  "--ir-optimized-ast-json", tempDir.path().string() + "/input.sol"},
+			"Error: --ethdebug / --ethdebug-runtime output can only be used with --ir. Optimization is not yet supported with ethdebug, e.g. no support for --optimize / --ir-optimized yet.\n"
+		},
+		{
+			{"solc", "--ethdebug", "--import-asm-json", tempDir.path().string() + "/input.json"},
+			"Error: Option --ethdebug is not supported with --import-asm-json.\n"
+		},
+		{
+			{"solc", "--via-ir", "--ethdebug",  "--asm-json", tempDir.path().string() + "/input.sol"},
+			"Error: --ethdebug / --ethdebug-runtime output can only be used with --ir. Optimization is not yet supported with ethdebug, e.g. no support for --optimize / --ir-optimized yet.\n"
+		},
+		{
+			{"solc", "--ethdebug-runtime",  "--asm-json", tempDir.path().string() + "/input.sol"},
+			"Error: --ethdebug / --ethdebug-runtime output can only be selected, if --via-ir was specified.\n"
+		},
+		{
+			{"solc", "--via-ir", "--ethdebug-runtime",  "--asm-json", tempDir.path().string() + "/input.sol"},
+			"Error: --ethdebug / --ethdebug-runtime output can only be used with --ir. Optimization is not yet supported with ethdebug, e.g. no support for --optimize / --ir-optimized yet.\n"
+		},
+		{
+			{"solc", "--via-ir", "--ethdebug-runtime",  "--ir-ast-json", tempDir.path().string() + "/input.sol"},
+			"Error: --ethdebug / --ethdebug-runtime output can only be used with --ir. Optimization is not yet supported with ethdebug, e.g. no support for --optimize / --ir-optimized yet.\n"
+		},
+		{
+			{"solc", "--via-ir", "--ethdebug-runtime",  "--ir-optimized-ast-json", tempDir.path().string() + "/input.sol"},
+			"Error: --ethdebug / --ethdebug-runtime output can only be used with --ir. Optimization is not yet supported with ethdebug, e.g. no support for --optimize / --ir-optimized yet.\n"
+		},
+		{
+			{"solc", "--ethdebug-runtime", "--import-asm-json", tempDir.path().string() + "/input.json"},
+			"Error: Option --ethdebug-runtime is not supported with --import-asm-json.\n"
+		},
+		{
+			{"solc", "--via-ir", "--ethdebug-runtime",  "--asm-json", tempDir.path().string() + "/input.sol"},
+			"Error: --ethdebug / --ethdebug-runtime output can only be used with --ir. Optimization is not yet supported with ethdebug, e.g. no support for --optimize / --ir-optimized yet.\n"
+		},
+		{
+			{"solc", "--debug-info", "ethdebug",  "--asm-json", tempDir.path().string() + "/input.sol"},
+			"Error: --debug-info ethdebug can only be used with --ir and/or --ethdebug / --ethdebug-runtime. Optimization is not yet supported with ethdebug, e.g. no support for --optimize / --ir-optimized yet.\n"
+		},
+		{
+			{"solc", "--debug-info", "ethdebug",  "--asm-json", tempDir.path().string() + "/input.sol"},
+			"Error: --debug-info ethdebug can only be used with --ir and/or --ethdebug / --ethdebug-runtime. Optimization is not yet supported with ethdebug, e.g. no support for --optimize / --ir-optimized yet.\n"
+		},
+		{
+			{"solc", "--debug-info", "ethdebug",  "--ir-ast-json", tempDir.path().string() + "/input.sol"},
+			"Error: --debug-info ethdebug can only be used with --ir and/or --ethdebug / --ethdebug-runtime. Optimization is not yet supported with ethdebug, e.g. no support for --optimize / --ir-optimized yet.\n"
+		},
+		{
+			{"solc", "--debug-info", "ethdebug",  "--ir-optimized-ast-json", tempDir.path().string() + "/input.sol"},
+			"Error: --debug-info ethdebug can only be used with --ir and/or --ethdebug / --ethdebug-runtime. Optimization is not yet supported with ethdebug, e.g. no support for --optimize / --ir-optimized yet.\n"
+		},
+		{
+			{"solc", "--debug-info", "ethdebug", "--import-asm-json", tempDir.path().string() + "/input.json"},
+			"Error: Option --debug-info is not supported with --import-asm-json.\n"
+		},
+		{
+			{"solc", "--debug-info", "ethdebug", "--import-asm-json", tempDir.path().string() + "/input.json"},
+			"Error: Option --debug-info is not supported with --import-asm-json.\n"
+		},
+		{
+			{"solc", "--debug-info", "ethdebug", "--asm-json", tempDir.path().string() + "/input.json"},
+			"Error: --debug-info ethdebug can only be used with --ir and/or --ethdebug / --ethdebug-runtime. Optimization is not yet supported with ethdebug, e.g. no support for --optimize / --ir-optimized yet.\n"
+		}
+	};
+	for (auto const& test: tests)
+	{
+		OptionsReaderAndMessages result = runCLI(test.first, "");
+		BOOST_REQUIRE(!result.success);
+		BOOST_CHECK_EQUAL(result.stderrContent, test.second);
+	}
+}
+
+BOOST_AUTO_TEST_CASE(cli_ethdebug_incompatible_input_modes)
+{
+	TemporaryDirectory tempDir(TEST_CASE_NAME);
+	createFilesWithParentDirs({tempDir.path() / "input.json"});
+	static std::vector<std::pair<std::vector<std::string>, std::string>> tests{
+		{
+			{"solc", "--ethdebug", "--import-asm-json", tempDir.path().string() + "/input.json"},
+			"Error: Option --ethdebug is not supported with --import-asm-json.\n"
+		},
+		{
+			{"solc", "--ethdebug", "--via-ir", "--import-asm-json", tempDir.path().string() + "/input.json"},
+			"Error: The following options are not supported in the current input mode: --via-ir\n"
+		},
+		{
+			{"solc", "--ethdebug", "--import-asm-json", tempDir.path().string() + "/input.json"},
+			"Error: Option --ethdebug is not supported with --import-asm-json.\n"
+		},
+		{
+			{"solc", "--debug-info", "ethdebug", "--import-asm-json", tempDir.path().string() + "/input.json"},
+			"Error: Option --debug-info is not supported with --import-asm-json.\n"
+		},
+		{
+			{"solc", "--ethdebug", "--import-ast", tempDir.path().string() + "/input.json"},
+			"Error: --ethdebug / --ethdebug-runtime output can only be selected, if --via-ir was specified.\n"
+		},
+		{
+			{"solc", "--ethdebug", "--via-ir", "--import-ast", tempDir.path().string() + "/input.json"},
+			"Error: Invalid input mode for --debug-info ethdebug / --ethdebug / --ethdebug-runtime.\n"
+		},
+		{
+			{"solc", "--debug-info", "ethdebug", "--ir", "--import-ast", tempDir.path().string() + "/input.json"},
+			"Error: Invalid input mode for --debug-info ethdebug / --ethdebug / --ethdebug-runtime.\n"
+		}
+	};
+	for (auto const& test: tests)
+	{
+		OptionsReaderAndMessages result = runCLI(test.first, "");
+		BOOST_REQUIRE(!result.success);
+		BOOST_CHECK_EQUAL(result.stderrContent, test.second);
+	}
+}
+
+BOOST_AUTO_TEST_CASE(cli_ethdebug_debug_info_ethdebug)
+{
+	TemporaryDirectory tempDir(TEST_CASE_NAME);
+	createFilesWithParentDirs({tempDir.path() / "input.sol"},  "pragma solidity >=0.0; contract C { function f() public pure {} }");
+	createFilesWithParentDirs({tempDir.path() / "input.yul"}, "{}");
+	static std::vector<std::tuple<std::vector<std::string>, std::vector<std::string>, std::vector<std::string>>> tests{
+		{
+			{"solc", "--debug-info", "ethdebug", tempDir.path().string() + "/input.sol"},
+			{"Error: --debug-info ethdebug can only be used with --ir and/or --ethdebug / --ethdebug-runtime. Optimization is not yet supported with ethdebug, e.g. no support for --optimize / --ir-optimized yet.\n"},
+			{},
+		},
+		{
+			{"solc", "--debug-info", "ethdebug", "--ir", tempDir.path().string() + "/input.sol"},
+			{},
+			{"/// ethdebug: enabled"},
+		},
+		{
+			{"solc", "--debug-info", "ethdebug", "--ir-optimized", tempDir.path().string() + "/input.sol"},
+			{"Error: --debug-info ethdebug can only be used with --ir and/or --ethdebug / --ethdebug-runtime. Optimization is not yet supported with ethdebug, e.g. no support for --optimize / --ir-optimized yet.\n"},
+			{},
+		},
+		{
+			{"solc", "--debug-info", "ethdebug", "--optimize", tempDir.path().string() + "/input.sol"},
+			{"Error: --debug-info ethdebug can only be used with --ir and/or --ethdebug / --ethdebug-runtime. Optimization is not yet supported with ethdebug, e.g. no support for --optimize / --ir-optimized yet.\n"},
+			{},
+		},
+		{
+			{"solc", "--debug-info", "ethdebug", "--ethdebug", tempDir.path().string() + "/input.sol"},
+			{"Error: --ethdebug / --ethdebug-runtime output can only be selected, if --via-ir was specified.\n"},
+			{},
+		},
+		{
+			{"solc", "--debug-info", "ethdebug", "--ethdebug", "--via-ir", tempDir.path().string() + "/input.sol"},
+			{},
+			{"======= Debug Data (ethdebug/format/info/resources) =======", "Debug Data (ethdebug/format/program):"},
+		},
+		{
+			{"solc", "--debug-info", "ethdebug", "--ethdebug-runtime", "--via-ir", tempDir.path().string() + "/input.sol"},
+			{},
+			{"======= Debug Data (ethdebug/format/info/resources) =======", "Debug Data of the runtime part (ethdebug/format/program):"},
+		},
+		{
+			{"solc", "--debug-info", "ethdebug", "--strict-assembly", tempDir.path().string() + "/input.yul"},
+			{},
+			{"/// ethdebug: enabled", "Pretty printed source", "Binary representation", "Text representation"},
+		},
+		{
+			{"solc",  "--ethdebug", "--strict-assembly", tempDir.path().string() + "/input.yul"},
+			{},
+			{"======= Debug Data (ethdebug/format/info/resources) =======", "Debug Data (ethdebug/format/program):"},
+		},
+		{
+			{"solc",  "--ethdebug-runtime", "--strict-assembly", tempDir.path().string() + "/input.yul"},
+			{"Error: The following outputs are not supported in assembler mode: --ethdebug-runtime.\n"},
+			{},
+		},
+		{
+			{"solc",  "--ethdebug", "--ethdebug-runtime", "--strict-assembly", tempDir.path().string() + "/input.yul"},
+			{"Error: The following outputs are not supported in assembler mode: --ethdebug-runtime.\n"},
+			{},
+		},
+		{
+			{"solc", "--debug-info", "ethdebug", "--ethdebug", tempDir.path().string() + "/input.sol"},
+			{"Error: --ethdebug / --ethdebug-runtime output can only be selected, if --via-ir was specified.\n"},
+			{},
+		},
+		{
+			{"solc", "--debug-info", "ethdebug", "--ethdebug-runtime", tempDir.path().string() + "/input.sol"},
+			{"Error: --ethdebug / --ethdebug-runtime output can only be selected, if --via-ir was specified.\n"},
+			{},
+		},
+		{
+			{"solc", "--debug-info", "ethdebug", "--ethdebug", "--ethdebug-runtime", tempDir.path().string() + "/input.sol"},
+			{"Error: --ethdebug / --ethdebug-runtime output can only be selected, if --via-ir was specified.\n"},
+			{},
+		},
+		{
+			{"solc", "--debug-info", "ethdebug", "--ethdebug", "--ethdebug-runtime", "--via-ir", tempDir.path().string() + "/input.sol"},
+			{},
+			{"======= Debug Data (ethdebug/format/info/resources) =======", "Debug Data (ethdebug/format/program):", "Debug Data of the runtime part (ethdebug/format/program):"},
+		},
+		{
+			{"solc", "--debug-info", "location", "--ethdebug", "--via-ir", tempDir.path().string() + "/input.sol"},
+			{"Error: --debug-info must contain ethdebug, when compiling with --ethdebug / --ethdebug-runtime.\n"},
+			{},
+		},
+		{
+			{"solc", "--debug-info", "location", "--ethdebug-runtime", "--via-ir", tempDir.path().string() + "/input.sol"},
+			{"Error: --debug-info must contain ethdebug, when compiling with --ethdebug / --ethdebug-runtime.\n"},
+			{},
+		},
+		{
+			{"solc", "--debug-info", "location", "--ethdebug", "--ethdebug-runtime", "--via-ir", tempDir.path().string() + "/input.sol"},
+			{"Error: --debug-info must contain ethdebug, when compiling with --ethdebug / --ethdebug-runtime.\n"},
+			{},
+		},
+		{
+			{"solc", "--debug-info", "all", "--ethdebug", "--via-ir", tempDir.path().string() + "/input.sol"},
+			{"Error: --debug-info must contain ethdebug, when compiling with --ethdebug / --ethdebug-runtime.\n"},
+			{},
+		},
+		{
+			{"solc", "--debug-info", "all", "--ethdebug-runtime", "--via-ir", tempDir.path().string() + "/input.sol"},
+			{"Error: --debug-info must contain ethdebug, when compiling with --ethdebug / --ethdebug-runtime.\n"},
+			{},
+		},
+		{
+			{"solc", "--debug-info", "all", "--ethdebug", "--ethdebug-runtime", "--via-ir", tempDir.path().string() + "/input.sol"},
+			{"Error: --debug-info must contain ethdebug, when compiling with --ethdebug / --ethdebug-runtime.\n"},
+			{},
+		},
+	};
+	for (auto const& test: tests)
+	{
+		OptionsReaderAndMessages result{runCLI(std::get<0>(test), "")};
+		BOOST_REQUIRE(!std::get<1>(test).empty() ? !result.success : result.success);
+		for (auto const& error : std::get<1>(test))
+			BOOST_REQUIRE(result.stderrContent == error);
+		for (auto const& output : std::get<2>(test))
+			BOOST_REQUIRE(result.stdoutContent.find(output) != std::string::npos);
+	}
+}
+
+BOOST_AUTO_TEST_CASE(cli_ethdebug_ethdebug_output)
+{
+	TemporaryDirectory tempDir(TEST_CASE_NAME);
+	createFilesWithParentDirs({tempDir.path() / "input.sol"}, "pragma solidity >=0.0; contract C { function f() public pure {} }");
+	static std::vector<std::tuple<std::vector<std::string>, std::vector<std::string>, std::vector<std::string>>> tests{
+		{
+			{"solc", "--ethdebug", tempDir.path().string() + "/input.sol"},
+			{"Error: --ethdebug / --ethdebug-runtime output can only be selected, if --via-ir was specified.\n"},
+			{},
+		},
+		{
+			{"solc", "--ethdebug", "--ethdebug-runtime", tempDir.path().string() + "/input.sol"},
+			{"Error: --ethdebug / --ethdebug-runtime output can only be selected, if --via-ir was specified.\n"},
+			{},
+		},
+		{
+			{"solc", "--ethdebug-runtime", tempDir.path().string() + "/input.sol"},
+			{"Error: --ethdebug / --ethdebug-runtime output can only be selected, if --via-ir was specified.\n"},
+			{},
+		},
+		{
+			{"solc", "--ethdebug", "--via-ir", tempDir.path().string() + "/input.sol"},
+			{},
+			{"======= Debug Data (ethdebug/format/info/resources) =======", "Debug Data (ethdebug/format/program)"},
+		},
+		{
+			{"solc", "--ethdebug-runtime", "--via-ir", tempDir.path().string() + "/input.sol"},
+			{},
+			{"======= Debug Data (ethdebug/format/info/resources) =======", "Debug Data of the runtime part (ethdebug/format/program)"},
+		},
+		{
+			{"solc", "--ethdebug", "--ethdebug-runtime", "--via-ir", tempDir.path().string() + "/input.sol"},
+			{},
+			{"======= Debug Data (ethdebug/format/info/resources) =======", "Debug Data (ethdebug/format/program)", "Debug Data of the runtime part (ethdebug/format/program)"},
+		},
+		{
+			{"solc", "--ethdebug", "--via-ir", "--ir", tempDir.path().string() + "/input.sol"},
+			{},
+			{"======= Debug Data (ethdebug/format/info/resources) =======", "Debug Data (ethdebug/format/program)", "/// ethdebug: enabled"},
+		},
+		{
+			{"solc", "--ethdebug-runtime", "--via-ir", "--ir", tempDir.path().string() + "/input.sol"},
+			{},
+			{"======= Debug Data (ethdebug/format/info/resources) =======", "Debug Data of the runtime part (ethdebug/format/program)", "/// ethdebug: enabled"},
+		},
+		{
+			{"solc", "--ethdebug", "--ethdebug-runtime", "--via-ir", "--ir", tempDir.path().string() + "/input.sol"},
+			{},
+			{"======= Debug Data (ethdebug/format/info/resources) =======", "Debug Data (ethdebug/format/program)", "Debug Data of the runtime part (ethdebug/format/program)", "/// ethdebug: enabled"},
+		},
+		{
+			{"solc", "--ethdebug", "--via-ir", "--ir-optimized", tempDir.path().string() + "/input.sol"},
+			{"Error: --ethdebug / --ethdebug-runtime output can only be used with --ir. Optimization is not yet supported with ethdebug, e.g. no support for --optimize / --ir-optimized yet.\n"},
+			{},
+		},
+		{
+			{"solc", "--ethdebug-runtime", "--via-ir", "--ir-optimized", tempDir.path().string() + "/input.sol"},
+			{"Error: --ethdebug / --ethdebug-runtime output can only be used with --ir. Optimization is not yet supported with ethdebug, e.g. no support for --optimize / --ir-optimized yet.\n"},
+			{},
+		},
+		{
+			{"solc", "--ethdebug", "--ethdebug-runtime", "--via-ir", "--ir-optimized", tempDir.path().string() + "/input.sol"},
+			{"Error: --ethdebug / --ethdebug-runtime output can only be used with --ir. Optimization is not yet supported with ethdebug, e.g. no support for --optimize / --ir-optimized yet.\n"},
+			{},
+		},
+		{
+			{"solc", "--ethdebug", "--via-ir", "--ir-optimized", "--optimize", tempDir.path().string() + "/input.sol"},
+			{"Error: --ethdebug / --ethdebug-runtime output can only be used with --ir. Optimization is not yet supported with ethdebug, e.g. no support for --optimize / --ir-optimized yet.\n"},
+			{},
+		},
+		{
+			{"solc", "--ethdebug-runtime", "--via-ir", "--ir-optimized", "--optimize", tempDir.path().string() + "/input.sol"},
+			{"Error: --ethdebug / --ethdebug-runtime output can only be used with --ir. Optimization is not yet supported with ethdebug, e.g. no support for --optimize / --ir-optimized yet.\n"},
+			{},
+		},
+		{
+			{"solc", "--ethdebug", "--ethdebug-runtime", "--via-ir", "--ir-optimized", "--optimize", tempDir.path().string() + "/input.sol"},
+			{"Error: --ethdebug / --ethdebug-runtime output can only be used with --ir. Optimization is not yet supported with ethdebug, e.g. no support for --optimize / --ir-optimized yet.\n"},
+			{},
+		},
+	};
+	for (auto const& test: tests)
+	{
+		OptionsReaderAndMessages result{runCLI(std::get<0>(test), "")};
+		BOOST_REQUIRE(!std::get<1>(test).empty() ? !result.success : result.success);
+		for (auto const& error : std::get<1>(test))
+			BOOST_REQUIRE(result.stderrContent == error);
+		for (auto const& output : std::get<2>(test))
+			BOOST_REQUIRE(result.stdoutContent.find(output) != std::string::npos);
+	}
 }
 
 BOOST_AUTO_TEST_SUITE_END()

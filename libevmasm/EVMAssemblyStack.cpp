@@ -36,16 +36,16 @@ namespace solidity::evmasm
 
 void EVMAssemblyStack::parseAndAnalyze(std::string const& _sourceName, std::string const& _source)
 {
-	Json::Value assemblyJson;
+	Json assemblyJson;
 	solRequire(jsonParseStrict(_source, assemblyJson), AssemblyImportException, "Could not parse JSON file.");
 	analyze(_sourceName, assemblyJson);
 }
 
-void EVMAssemblyStack::analyze(std::string const& _sourceName, Json::Value const& _assemblyJson)
+void EVMAssemblyStack::analyze(std::string const& _sourceName, Json const& _assemblyJson)
 {
 	solAssert(!m_evmAssembly);
 	m_name = _sourceName;
-	std::tie(m_evmAssembly, m_sourceList) = evmasm::Assembly::fromJSON(_assemblyJson);
+	std::tie(m_evmAssembly, m_sourceList) = evmasm::Assembly::fromJSON(_assemblyJson, {}, 0, m_eofVersion);
 	solRequire(m_evmAssembly != nullptr, AssemblyImportException, "Could not create evm assembly object.");
 }
 
@@ -56,12 +56,16 @@ void EVMAssemblyStack::assemble()
 	solAssert(!m_evmRuntimeAssembly);
 
 	m_object = m_evmAssembly->assemble();
-	m_sourceMapping = AssemblyItem::computeSourceMapping(m_evmAssembly->items(), sourceIndices());
+	// TODO: Check for EOF
+	solAssert(m_evmAssembly->codeSections().size() == 1);
+	m_sourceMapping = AssemblyItem::computeSourceMapping(m_evmAssembly->codeSections().front().items, sourceIndices());
 	if (m_evmAssembly->numSubs() > 0)
 	{
 		m_evmRuntimeAssembly = std::make_shared<evmasm::Assembly>(m_evmAssembly->sub(0));
 		solAssert(m_evmRuntimeAssembly && !m_evmRuntimeAssembly->isCreation());
-		m_runtimeSourceMapping = AssemblyItem::computeSourceMapping(m_evmRuntimeAssembly->items(), sourceIndices());
+		// TODO: Check for EOF
+		solAssert(m_evmRuntimeAssembly->codeSections().size() == 1);
+		m_runtimeSourceMapping = AssemblyItem::computeSourceMapping(m_evmRuntimeAssembly->codeSections().front().items, sourceIndices());
 		m_runtimeObject = m_evmRuntimeAssembly->assemble();
 	}
 }
@@ -99,7 +103,26 @@ std::string const* EVMAssemblyStack::runtimeSourceMapping(std::string const& _co
 	return &m_runtimeSourceMapping;
 }
 
-Json::Value EVMAssemblyStack::assemblyJSON(std::string const& _contractName) const
+Json EVMAssemblyStack::ethdebug(std::string const& _contractName) const
+{
+	solAssert(_contractName == m_name);
+	solAssert(m_ethdebug != nullptr);
+	return *m_ethdebug;
+}
+
+Json EVMAssemblyStack::ethdebugRuntime(std::string const& _contractName) const
+{
+	solAssert(_contractName == m_name);
+	solAssert(m_ethdebugRuntime != nullptr);
+	return *m_ethdebugRuntime;
+}
+
+Json EVMAssemblyStack::ethdebug() const
+{
+	return {};
+}
+
+Json EVMAssemblyStack::assemblyJSON(std::string const& _contractName) const
 {
 	solAssert(_contractName == m_name);
 	solAssert(m_evmAssembly);

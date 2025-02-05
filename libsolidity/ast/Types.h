@@ -70,7 +70,7 @@ inline rational makeRational(bigint const& _numerator, bigint const& _denominato
 		return rational(_numerator, _denominator);
 }
 
-enum class DataLocation { Storage, CallData, Memory };
+enum class DataLocation { Storage, Transient, CallData, Memory };
 
 
 /**
@@ -495,6 +495,7 @@ public:
 	TypeResult unaryOperatorResult(Token _operator) const override;
 	TypeResult binaryOperatorResult(Token _operator, Type const* _other) const override;
 
+	bool operator==(IntegerType const& _other) const;
 	bool operator==(Type const& _other) const override;
 
 	unsigned calldataEncodedSize(bool _padded = true) const override { return _padded ? 32 : m_bits / 8; }
@@ -854,6 +855,7 @@ public:
 	BoolResult isImplicitlyConvertibleTo(Type const& _convertTo) const override;
 	BoolResult isExplicitlyConvertibleTo(Type const& _convertTo) const override;
 	std::string richIdentifier() const override;
+	bool operator==(ArrayType const& _other) const;
 	bool operator==(Type const& _other) const override;
 	unsigned calldataEncodedSize(bool) const override;
 	unsigned calldataEncodedTailSize() const override;
@@ -1001,8 +1003,8 @@ public:
 	FunctionType const* newExpressionType() const;
 
 	/// @returns a list of all state variables (including inherited) of the contract and their
-	/// offsets in storage.
-	std::vector<std::tuple<VariableDeclaration const*, u256, unsigned>> stateVariables() const;
+	/// offsets in storage/transient storage.
+	std::vector<std::tuple<VariableDeclaration const*, u256, unsigned>> stateVariables(DataLocation _location) const;
 	/// @returns a list of all immutable variables (including inherited) of the contract.
 	std::vector<VariableDeclaration const*> immutableVariables() const;
 protected:
@@ -1148,6 +1150,7 @@ public:
 	Declaration const* typeDefinition() const override;
 
 	std::string richIdentifier() const override;
+	bool operator==(UserDefinedValueType const& _other) const;
 	bool operator==(Type const& _other) const override;
 
 	unsigned calldataEncodedSize(bool _padded) const override { return underlyingType().calldataEncodedSize(_padded); }
@@ -1625,6 +1628,7 @@ public:
 	bool hasSimpleZeroValueInMemory() const override { solAssert(false, ""); }
 	std::string richIdentifier() const override;
 	bool operator==(Type const& _other) const override;
+	bool operator==(ModifierType const& _other) const;
 	std::string toString(bool _withoutDataLocation) const override;
 protected:
 	std::vector<std::tuple<std::string, Type const*>> makeStackItems() const override { return {}; }
@@ -1661,6 +1665,8 @@ private:
 
 /**
  * Special type for magic variables (block, msg, tx, type(...)), similar to a struct but without any reference.
+ *
+ * It is also the type shared by all instances of all custom error types.
  */
 class MagicType: public Type
 {
@@ -1670,6 +1676,7 @@ public:
 		Message, ///< "msg"
 		Transaction, ///< "tx"
 		ABI, ///< "abi"
+		Error, ///< custom error instance
 		MetaType ///< "type(...)"
 	};
 

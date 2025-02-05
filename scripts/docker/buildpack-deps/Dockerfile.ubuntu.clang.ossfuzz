@@ -21,79 +21,105 @@
 #
 # (c) 2016-2021 solidity contributors.
 #------------------------------------------------------------------------------
-FROM gcr.io/oss-fuzz-base/base-clang:latest as base
-LABEL version="5"
+# FIXME: Workaround for Boost 1.83.0 build failure when using Clang 18 (default since https://github.com/google/oss-fuzz/pull/11714)
+# See: https://github.com/google/oss-fuzz/blob/5a9322260c4c66e7eb3e5d922b9fee6621ffd8da/projects/solidity/Dockerfile#L17C1-L18C139
+FROM gcr.io/oss-fuzz-base/base-builder@sha256:19782f7fe8092843368894dbc471ce9b30dd6a2813946071a36e8b05f5b1e27e AS base
+LABEL version="9"
 
 ARG DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update; \
 	apt-get -qqy install --no-install-recommends \
-		automake libtool bison texinfo \
-		build-essential sudo \
+		automake \
+		bison \
+		build-essential \
+		curl \
+		git \
+		jq \
+		libbz2-dev \
+		liblzma-dev \
+		libtool \
+		lsof \
+		m4 \
+		mlton \
+		ninja-build \
+		openjdk-8-jdk \
+		pkg-config \
+		python3-pip \
+		python3-dev \
 		software-properties-common \
-		ninja-build git wget \
-		libbz2-dev zlib1g-dev git curl uuid-dev \
-		pkg-config openjdk-8-jdk liblzma-dev unzip mlton m4 jq; \
-    apt-get install -qy python3-pip;
-
-# Install cmake 3.21.2 (minimum requirement is cmake 3.10)
-RUN wget https://github.com/Kitware/CMake/releases/download/v3.21.2/cmake-3.21.2-Linux-x86_64.sh; \
-    test "$(sha256sum cmake-3.21.2-Linux-x86_64.sh)" = "3310362c6fe4d4b2dc00823835f3d4a7171bbd73deb7d059738494761f1c908c  cmake-3.21.2-Linux-x86_64.sh"; \
-    chmod +x cmake-3.21.2-Linux-x86_64.sh; \
-    ./cmake-3.21.2-Linux-x86_64.sh --skip-license --prefix="/usr"
+		sudo \
+		texinfo \
+		unzip \
+		uuid-dev \
+		wget \
+		zlib1g-dev; \
+	pip3 install \
+		codecov \
+		colorama \
+		deepdiff \
+		parsec \
+		pygments-lexer-solidity \
+		pylint \
+		requests \
+		tabulate;
 
 FROM base AS libraries
 
 # Boost
 RUN set -ex; \
-    cd /usr/src; \
-    wget -q 'https://boostorg.jfrog.io/artifactory/main/release/1.74.0/source/boost_1_74_0.tar.bz2' -O boost.tar.bz2; \
-    test "$(sha256sum boost.tar.bz2)" = "83bfc1507731a0906e387fc28b7ef5417d591429e51e788417fe9ff025e116b1  boost.tar.bz2" && \
-    tar -xf boost.tar.bz2; \
-    rm boost.tar.bz2; \
-    cd boost_1_74_0; \
-    CXXFLAGS="-stdlib=libc++ -pthread" LDFLAGS="-stdlib=libc++" ./bootstrap.sh --with-toolset=clang --prefix=/usr; \
-    ./b2 toolset=clang cxxflags="-stdlib=libc++ -pthread" linkflags="-stdlib=libc++ -pthread" headers; \
-    ./b2 toolset=clang cxxflags="-stdlib=libc++ -pthread" linkflags="-stdlib=libc++ -pthread" \
-        link=static variant=release runtime-link=static \
-        system filesystem unit_test_framework program_options \
-        install -j $(($(nproc)/2)); \
-    rm -rf /usr/src/boost_1_74_0
+	cd /usr/src; \
+	wget -q 'https://archives.boost.io/release/1.83.0/source/boost_1_83_0.tar.bz2' -O boost.tar.bz2; \
+	test "$(sha256sum boost.tar.bz2)" = "6478edfe2f3305127cffe8caf73ea0176c53769f4bf1585be237eb30798c3b8e  boost.tar.bz2" && \
+	tar -xf boost.tar.bz2; \
+	rm boost.tar.bz2; \
+	cd boost_1_83_0; \
+	CXXFLAGS="-std=c++17 -stdlib=libc++ -pthread" LDFLAGS="-stdlib=libc++" ./bootstrap.sh --with-toolset=clang --prefix=/usr; \
+	./b2 toolset=clang cxxflags="-stdlib=libc++ -pthread" linkflags="-stdlib=libc++ -pthread" headers; \
+	./b2 toolset=clang cxxflags="-stdlib=libc++ -pthread" linkflags="-stdlib=libc++ -pthread" \
+		link=static variant=release runtime-link=static \
+		system filesystem unit_test_framework program_options \
+		install -j $(($(nproc)/2)); \
+	rm -rf /usr/src/boost_1_83_0
 
 # Z3
 RUN set -ex; \
-    git clone --depth 1 -b z3-4.12.1 https://github.com/Z3Prover/z3.git \
-    /usr/src/z3; \
-    cd /usr/src/z3; \
-    mkdir build; \
-    cd build; \
-    LDFLAGS=$CXXFLAGS cmake -DZ3_BUILD_LIBZ3_SHARED=OFF -DCMAKE_INSTALL_PREFIX=/usr \
-    -DCMAKE_BUILD_TYPE=Release ..; \
-    make libz3 -j; \
-    make install; \
-    rm -rf /usr/src/z3
+	z3_version="4.13.3"; \
+	z3_archive_name="z3-${z3_version}-x64-glibc-2.35"; \
+	wget "https://github.com/Z3Prover/z3/releases/download/z3-${z3_version}/${z3_archive_name}.zip" -O /opt/z3.zip; \
+	test "$(sha256sum /opt/z3.zip)" = "32c7377026733c9d7b33c21cd77a68f50ba682367207b031a6bfd80140a8722f  /opt/z3.zip"; \
+	unzip -j /opt/z3.zip "${z3_archive_name}/bin/z3" -d /usr/bin; \
+	rm -f /opt/z3.zip;
 
 # Eldarica
 RUN set -ex; \
 	apt-get update; \
-	apt-get install -qy unzip openjdk-11-jre; \
+	apt-get install -qqy openjdk-11-jre; \
 	eldarica_version="2.1"; \
 	wget "https://github.com/uuverifiers/eldarica/releases/download/v${eldarica_version}/eldarica-bin-${eldarica_version}.zip" -O /opt/eld_binaries.zip; \
 	test "$(sha256sum /opt/eld_binaries.zip)" = "0ac43f45c0925383c9d2077f62bbb515fd792375f3b2b101b30c9e81dcd7785c  /opt/eld_binaries.zip"; \
 	unzip /opt/eld_binaries.zip -d /opt; \
 	rm -f /opt/eld_binaries.zip;
 
+# CVC5
+RUN set -ex; \
+	cvc5_version="1.2.0"; \
+	cvc5_archive_name="cvc5-Linux-x86_64-static"; \
+	wget "https://github.com/cvc5/cvc5/releases/download/cvc5-${cvc5_version}/${cvc5_archive_name}.zip" -O /opt/cvc5.zip; \
+	test "$(sha256sum /opt/cvc5.zip)" = "d18f174ff9a11923c32c3f871f844ed16bd77a28f51050b8e7c8d821c98a1c2e  /opt/cvc5.zip"; \
+	unzip -j /opt/cvc5.zip "${cvc5_archive_name}/bin/cvc5" -d /usr/bin; \
+	rm -f /opt/cvc5.zip;
+
 # OSSFUZZ: libprotobuf-mutator
 RUN set -ex; \
-	git clone https://github.com/google/libprotobuf-mutator.git \
-	    /usr/src/libprotobuf-mutator; \
+	git clone https://github.com/google/libprotobuf-mutator.git /usr/src/libprotobuf-mutator; \
 	cd /usr/src/libprotobuf-mutator; \
 	git checkout 3521f47a2828da9ace403e4ecc4aece1a84feb36; \
 	mkdir build; \
 	cd build; \
 	cmake .. -GNinja -DLIB_PROTO_MUTATOR_DOWNLOAD_PROTOBUF=ON \
-        -DLIB_PROTO_MUTATOR_TESTING=OFF -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_INSTALL_PREFIX="/usr"; \
+		-DLIB_PROTO_MUTATOR_TESTING=OFF -DCMAKE_BUILD_TYPE=Release \
+		-DCMAKE_INSTALL_PREFIX="/usr"; \
 	ninja; \
 	cp -vpr external.protobuf/bin/* /usr/bin/; \
 	cp -vpr external.protobuf/include/* /usr/include/; \
@@ -115,41 +141,37 @@ RUN set -ex; \
 
 # gmp
 RUN set -ex; \
-    # Replace system installed libgmp static library
-    # with sanitized version. Do not perform apt
-    # remove because it removes mlton as well that
-    # we need for building libabicoder
-    cd /usr/src/; \
-    git clone --depth 1 --branch gmp-6.2.1 https://github.com/gmp-mirror/gmp-6.2 gmp/; \
-    rm -r gmp/.git/; \
-    test \
-        "$(tar --create gmp/ --sort=name --mtime=1970-01-01Z --owner=0 --group=0 --numeric-owner | sha256sum)" = \
-        "d606ff6a4ce98692f9920031e85ea8fcf4a65ce1426f6f0048b8794aefed174b  -"; \
-    # NOTE: This removes also libgmp.so, which git depends on
-    rm -f /usr/lib/x86_64-linux-gnu/libgmp.*; \
-    rm -f /usr/include/x86_64-linux-gnu/gmp.h; \
-    cd gmp/; \
-    autoreconf -i; \
-    ./configure --prefix=/usr --enable-static=yes --enable-maintainer-mode; \
-    make -j; \
-    make check; \
-    make install; \
-    rm -rf /usr/src/gmp/
+	# Replace system installed libgmp static library
+	# with sanitized version. Do not perform apt
+	# remove because it removes mlton as well that
+	# we need for building libabicoder
+	cd /usr/src/; \
+	git clone --depth 1 --branch gmp-6.2.1 https://github.com/gmp-mirror/gmp-6.2 gmp/; \
+	rm -r gmp/.git/; \
+	test \
+		"$(tar --create gmp/ --sort=name --mtime=1970-01-01Z --owner=0 --group=0 --numeric-owner | sha256sum)" = \
+		"d606ff6a4ce98692f9920031e85ea8fcf4a65ce1426f6f0048b8794aefed174b  -"; \
+	# NOTE: This removes also libgmp.so, which git depends on
+	rm -f /usr/lib/x86_64-linux-gnu/libgmp.*; \
+	rm -f /usr/include/x86_64-linux-gnu/gmp.h; \
+	cd gmp/; \
+	autoreconf -i; \
+	./configure --prefix=/usr --enable-static=yes --enable-maintainer-mode; \
+	make -j; \
+	make check; \
+	make install; \
+	rm -rf /usr/src/gmp/
 
 # libabicoder
 RUN set -ex; \
-    cd /usr/src; \
-    git clone https://github.com/ekpyron/Yul-Isabelle; \
-    cd Yul-Isabelle; \
-    cd libabicoder; \
-    CXX=clang++ CXXFLAGS="-stdlib=libc++ -pthread" make; \
-    cp libabicoder.a /usr/lib; \
-    cp abicoder.hpp /usr/include; \
-    rm -rf /usr/src/Yul-Isabelle
-
-# Cleanup
-RUN set -ex; \
-	rm -rf /var/lib/apt/lists/*
+	cd /usr/src; \
+	git clone https://github.com/ekpyron/Yul-Isabelle; \
+	cd Yul-Isabelle; \
+	cd libabicoder; \
+	CXX=clang++ CXXFLAGS="-stdlib=libc++ -pthread" make; \
+	cp libabicoder.a /usr/lib; \
+	cp abicoder.hpp /usr/include; \
+	rm -rf /usr/src/Yul-Isabelle
 
 FROM base
 COPY --from=libraries /usr/lib /usr/lib

@@ -12,13 +12,15 @@ contract C {
     function g() public view returns (uint) { return address(0).code.length; }
     function h() public view returns (uint) { return address(1).code.length; }
 }
+// ====
+// bytecodeFormat: legacy
 // ----
 // constructor() ->
-// gas irOptimized: 70351
-// gas irOptimized code: 95800
-// gas legacy: 82380
+// gas irOptimized: 70760
+// gas irOptimized code: 94600
+// gas legacy: 82428
 // gas legacy code: 153800
-// gas legacyOptimized: 69496
+// gas legacyOptimized: 69400
 // gas legacyOptimized code: 79200
 // initCode() -> 0x20, 0
 // f() -> true

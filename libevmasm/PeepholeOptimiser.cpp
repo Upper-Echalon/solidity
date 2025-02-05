@@ -38,6 +38,7 @@ struct OptimiserState
 	AssemblyItems const& items;
 	size_t i;
 	std::back_insert_iterator<AssemblyItems> out;
+	langutil::EVMVersion evmVersion = langutil::EVMVersion();
 };
 
 template<typename FunctionType>
@@ -197,18 +198,28 @@ struct DoubleSwap: SimplePeepholeOptimizerMethod<DoubleSwap>
 	}
 };
 
-struct DoublePush: SimplePeepholeOptimizerMethod<DoublePush>
+struct DoublePush
 {
-	static bool applySimple(
-		AssemblyItem const& _push1,
-		AssemblyItem const& _push2,
-		std::back_insert_iterator<AssemblyItems> _out
-	)
+	static bool apply(OptimiserState& _state)
 	{
-		if (_push1.type() == Push && _push2.type() == Push && _push1.data() == _push2.data())
+		size_t windowSize = 2;
+		if (_state.i + windowSize > _state.items.size())
+			return false;
+
+		auto push1 = _state.items.begin() + static_cast<ptrdiff_t>(_state.i);
+		auto push2 = _state.items.begin() + static_cast<ptrdiff_t>(_state.i + 1);
+		assertThrow(push1 != _state.items.end() && push2 != _state.items.end(), OptimizerException, "");
+
+		if (
+			push1->type() == Push &&
+			push2->type() == Push &&
+			push1->data() == push2->data() &&
+			(!_state.evmVersion.hasPush0() || push1->data() != 0)
+		)
 		{
-			*_out = _push1;
-			*_out = {Instruction::DUP1, _push2.debugData()};
+			*_state.out = *push1;
+			*_state.out = {Instruction::DUP1, push2->debugData()};
+			_state.i += windowSize;
 			return true;
 		}
 		else
@@ -317,6 +328,29 @@ struct IsZeroIsZeroJumpI: SimplePeepholeOptimizerMethod<IsZeroIsZeroJumpI>
 	}
 };
 
+struct IsZeroIsZeroRJumpI: SimplePeepholeOptimizerMethod<IsZeroIsZeroRJumpI>
+{
+	static size_t applySimple(
+		AssemblyItem const& _iszero1,
+		AssemblyItem const& _iszero2,
+		AssemblyItem const& _rjumpi,
+		std::back_insert_iterator<AssemblyItems> _out
+	)
+	{
+		if (
+			_iszero1 == Instruction::ISZERO &&
+			_iszero2 == Instruction::ISZERO &&
+			_rjumpi.type() == ConditionalRelativeJump
+		)
+		{
+			*_out = _rjumpi;
+			return true;
+		}
+		else
+			return false;
+	}
+};
+
 struct EqIsZeroJumpI: SimplePeepholeOptimizerMethod<EqIsZeroJumpI>
 {
 	static size_t applySimple(
@@ -337,6 +371,30 @@ struct EqIsZeroJumpI: SimplePeepholeOptimizerMethod<EqIsZeroJumpI>
 			*_out = AssemblyItem(Instruction::SUB, _eq.debugData());
 			*_out = _pushTag;
 			*_out = _jumpi;
+			return true;
+		}
+		else
+			return false;
+	}
+};
+
+struct EqIsZeroRJumpI: SimplePeepholeOptimizerMethod<EqIsZeroRJumpI>
+{
+	static size_t applySimple(
+		AssemblyItem const& _eq,
+		AssemblyItem const& _iszero,
+		AssemblyItem const& _rjumpi,
+		std::back_insert_iterator<AssemblyItems> _out
+	)
+	{
+		if (
+			_eq == Instruction::EQ &&
+			_iszero == Instruction::ISZERO &&
+			_rjumpi.type() == ConditionalRelativeJump
+		)
+		{
+			*_out = AssemblyItem(Instruction::SUB, _eq.debugData());
+			*_out = _rjumpi;
 			return true;
 		}
 		else
@@ -376,6 +434,33 @@ struct DoubleJump: SimplePeepholeOptimizerMethod<DoubleJump>
 	}
 };
 
+// rjumpi(tag_1) rjump(tag_2) tag_1: -> iszero rjumpi(tag_2) tag_1:
+struct DoubleRJump: SimplePeepholeOptimizerMethod<DoubleRJump>
+{
+	static size_t applySimple(
+		AssemblyItem const& _rjumpi,
+		AssemblyItem const& _rjump,
+		AssemblyItem const& _tag1,
+		std::back_insert_iterator<AssemblyItems> _out
+	)
+	{
+		if (
+			_rjumpi.type() == ConditionalRelativeJump &&
+			_rjump.type() == RelativeJump &&
+			_tag1.type() == Tag &&
+			_rjumpi.data() == _tag1.data()
+		)
+		{
+			*_out = AssemblyItem(Instruction::ISZERO, _rjumpi.debugData());
+			*_out = AssemblyItem::conditionalRelativeJumpTo(_rjump.tag(), _rjump.debugData());
+			*_out = _tag1;
+			return true;
+		}
+		else
+			return false;
+	}
+};
+
 struct JumpToNext: SimplePeepholeOptimizerMethod<JumpToNext>
 {
 	static size_t applySimple(
@@ -394,6 +479,30 @@ struct JumpToNext: SimplePeepholeOptimizerMethod<JumpToNext>
 		{
 			if (_jump == Instruction::JUMPI)
 				*_out = AssemblyItem(Instruction::POP, _jump.debugData());
+			*_out = _tag;
+			return true;
+		}
+		else
+			return false;
+	}
+};
+
+struct RJumpToNext: SimplePeepholeOptimizerMethod<RJumpToNext>
+{
+	static size_t applySimple(
+		AssemblyItem const& _rjump,
+		AssemblyItem const& _tag,
+		std::back_insert_iterator<AssemblyItems> _out
+	)
+	{
+		if (
+			(_rjump.type() == ConditionalRelativeJump || _rjump.type() == RelativeJump) &&
+			_tag.type() == Tag &&
+			_rjump.data() == _tag.data()
+		)
+		{
+			if (_rjump.type() == ConditionalRelativeJump)
+				*_out = AssemblyItem(Instruction::POP, _rjump.debugData());
 			*_out = _tag;
 			return true;
 		}
@@ -465,6 +574,7 @@ struct UnreachableCode
 			return false;
 		if (
 			it[0] != Instruction::JUMP &&
+			it[0] != Instruction::RJUMP &&
 			it[0] != Instruction::RETURN &&
 			it[0] != Instruction::STOP &&
 			it[0] != Instruction::INVALID &&
@@ -487,6 +597,99 @@ struct UnreachableCode
 	}
 };
 
+struct DeduplicateNextTagSize3 : SimplePeepholeOptimizerMethod<DeduplicateNextTagSize3>
+{
+	static bool applySimple(
+		AssemblyItem const& _precedingItem,
+		AssemblyItem const& _itemA,
+		AssemblyItem const& _itemB,
+		AssemblyItem const& _breakingItem,
+		AssemblyItem const& _tag,
+		AssemblyItem const& _itemC,
+		AssemblyItem const& _itemD,
+		AssemblyItem const& _breakingItem2,
+		std::back_insert_iterator<AssemblyItems> _out
+	)
+	{
+		if (
+			_precedingItem.type() != Tag &&
+			_itemA == _itemC &&
+			_itemB == _itemD &&
+			_breakingItem == _breakingItem2 &&
+			_tag.type() == Tag &&
+			SemanticInformation::terminatesControlFlow(_breakingItem)
+		)
+		{
+			*_out = _precedingItem;
+			*_out = _tag;
+			*_out = _itemC;
+			*_out = _itemD;
+			*_out = _breakingItem2;
+			return true;
+		}
+
+		return false;
+	}
+};
+
+struct DeduplicateNextTagSize2 : SimplePeepholeOptimizerMethod<DeduplicateNextTagSize2>
+{
+	static bool applySimple(
+		AssemblyItem const& _precedingItem,
+		AssemblyItem const& _itemA,
+		AssemblyItem const& _breakingItem,
+		AssemblyItem const& _tag,
+		AssemblyItem const& _itemC,
+		AssemblyItem const& _breakingItem2,
+		std::back_insert_iterator<AssemblyItems> _out
+	)
+	{
+		if (
+			_precedingItem.type() != Tag &&
+			_itemA == _itemC &&
+			_breakingItem == _breakingItem2 &&
+			_tag.type() == Tag &&
+			SemanticInformation::terminatesControlFlow(_breakingItem)
+		)
+		{
+			*_out = _precedingItem;
+			*_out = _tag;
+			*_out = _itemC;
+			*_out = _breakingItem2;
+			return true;
+		}
+
+		return false;
+	}
+};
+
+struct DeduplicateNextTagSize1 : SimplePeepholeOptimizerMethod<DeduplicateNextTagSize1>
+{
+	static bool applySimple(
+		AssemblyItem const& _precedingItem,
+		AssemblyItem const& _breakingItem,
+		AssemblyItem const& _tag,
+		AssemblyItem const& _breakingItem2,
+		std::back_insert_iterator<AssemblyItems> _out
+	)
+	{
+		if (
+			_precedingItem.type() != Tag &&
+			_breakingItem == _breakingItem2 &&
+			_tag.type() == Tag &&
+			SemanticInformation::terminatesControlFlow(_breakingItem)
+		)
+		{
+			*_out = _precedingItem;
+			*_out = _tag;
+			*_out = _breakingItem2;
+			return true;
+		}
+
+		return false;
+	}
+};
+
 void applyMethods(OptimiserState&)
 {
 	assertThrow(false, OptimizerException, "Peephole optimizer failed to apply identity.");
@@ -506,21 +709,48 @@ size_t numberOfPops(AssemblyItems const& _items)
 
 }
 
+PeepholeOptimiser::PeepholeOptimiser(AssemblyItems& _items, langutil::EVMVersion const _evmVersion):
+	m_items(_items),
+	m_evmVersion(_evmVersion)
+{
+}
+
 bool PeepholeOptimiser::optimise()
 {
 	// Avoid referencing immutables too early by using approx. counting in bytesRequired()
 	auto const approx = evmasm::Precision::Approximate;
-	OptimiserState state {m_items, 0, back_inserter(m_optimisedItems)};
+	OptimiserState state {m_items, 0, back_inserter(m_optimisedItems), m_evmVersion};
 	while (state.i < m_items.size())
 		applyMethods(
 			state,
-			PushPop(), OpPop(), OpStop(), OpReturnRevert(), DoublePush(), DoubleSwap(), CommutativeSwap(), SwapComparison(),
-			DupSwap(), IsZeroIsZeroJumpI(), EqIsZeroJumpI(), DoubleJump(), JumpToNext(), UnreachableCode(),
-			TagConjunctions(), TruthyAnd(), Identity()
+			PushPop(),
+			OpPop(),
+			OpStop(),
+			OpReturnRevert(),
+			DoublePush(),
+			DoubleSwap(),
+			CommutativeSwap(),
+			SwapComparison(),
+			DupSwap(),
+			IsZeroIsZeroJumpI(),
+			IsZeroIsZeroRJumpI(), // EOF specific
+			EqIsZeroJumpI(),
+			EqIsZeroRJumpI(),     // EOF specific
+			DoubleJump(),
+			DoubleRJump(),        // EOF specific
+			JumpToNext(),
+			RJumpToNext(),        // EOF specific
+			UnreachableCode(),
+			DeduplicateNextTagSize3(),
+			DeduplicateNextTagSize2(),
+			DeduplicateNextTagSize1(),
+			TagConjunctions(),
+			TruthyAnd(),
+			Identity()
 		);
 	if (m_optimisedItems.size() < m_items.size() || (
 		m_optimisedItems.size() == m_items.size() && (
-			evmasm::bytesRequired(m_optimisedItems, 3, approx) < evmasm::bytesRequired(m_items, 3, approx) ||
+			evmasm::bytesRequired(m_optimisedItems, 3, m_evmVersion, approx) < evmasm::bytesRequired(m_items, 3, m_evmVersion, approx) ||
 			numberOfPops(m_optimisedItems) > numberOfPops(m_items)
 		)
 	))

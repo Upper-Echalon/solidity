@@ -661,8 +661,12 @@ bool IntegerType::operator==(Type const& _other) const
 {
 	if (_other.category() != category())
 		return false;
-	IntegerType const& other = dynamic_cast<IntegerType const&>(_other);
-	return other.m_bits == m_bits && other.m_modifier == m_modifier;
+	return *this == dynamic_cast<IntegerType const&>(_other);
+}
+
+bool IntegerType::operator==(IntegerType const& _other) const
+{
+	return _other.m_bits == m_bits && _other.m_modifier == m_modifier;
 }
 
 std::string IntegerType::toString(bool) const
@@ -1544,6 +1548,8 @@ TypeResult ReferenceType::unaryOperatorResult(Token _operator) const
 		return TypeProvider::emptyTuple();
 	case DataLocation::Storage:
 		return isPointer() ? nullptr : TypeProvider::emptyTuple();
+	case DataLocation::Transient:
+		solUnimplemented("Transient data location is only supported for value types.");
 	}
 	return nullptr;
 }
@@ -1571,6 +1577,9 @@ std::string ReferenceType::stringForReferencePart() const
 		return "calldata";
 	case DataLocation::Memory:
 		return "memory";
+	case DataLocation::Transient:
+		solUnimplemented("Transient data location is only supported for value types.");
+		break;
 	}
 	solAssert(false, "");
 	return "";
@@ -1583,6 +1592,9 @@ std::string ReferenceType::identifierLocationSuffix() const
 	{
 	case DataLocation::Storage:
 		id += "_storage";
+		break;
+	case DataLocation::Transient:
+		solUnimplemented("Transient data location is only supported for value types.");
 		break;
 	case DataLocation::Memory:
 		id += "_memory";
@@ -1691,17 +1703,21 @@ bool ArrayType::operator==(Type const& _other) const
 {
 	if (_other.category() != category())
 		return false;
-	ArrayType const& other = dynamic_cast<ArrayType const&>(_other);
+	return *this == dynamic_cast<ArrayType const&>(_other);
+}
+
+bool ArrayType::operator==(ArrayType const& _other) const
+{
 	if (
-		!equals(other) ||
-		other.isByteArray() != isByteArray() ||
-		other.isString() != isString() ||
-		other.isDynamicallySized() != isDynamicallySized()
+		!equals(_other) ||
+		_other.isByteArray() != isByteArray() ||
+		_other.isString() != isString() ||
+		_other.isDynamicallySized() != isDynamicallySized()
 	)
 		return false;
-	if (*other.baseType() != *baseType())
+	if (*_other.baseType() != *baseType())
 		return false;
-	return isDynamicallySized() || length() == other.length();
+	return isDynamicallySized() || length() == _other.length();
 }
 
 BoolResult ArrayType::validForLocation(DataLocation _loc) const
@@ -1747,6 +1763,9 @@ BoolResult ArrayType::validForLocation(DataLocation _loc) const
 		case DataLocation::Storage:
 			if (storageSizeUpperBound() >= bigint(1) << 256)
 				return BoolResult::err("Type too large for storage.");
+			break;
+		case DataLocation::Transient:
+			solUnimplemented("Transient data location is only supported for value types.");
 			break;
 	}
 	return true;
@@ -1828,6 +1847,9 @@ std::vector<std::tuple<std::string, Type const*>> ArrayType::makeStackItems() co
 		case DataLocation::Storage:
 			// byte offset inside storage value is omitted
 			return {std::make_tuple("slot", TypeProvider::uint256())};
+		case DataLocation::Transient:
+			solUnimplemented("Transient data location is only supported for value types.");
+			break;
 	}
 	solAssert(false, "");
 }
@@ -2126,12 +2148,25 @@ FunctionType const* ContractType::newExpressionType() const
 	return m_constructorType;
 }
 
-std::vector<std::tuple<VariableDeclaration const*, u256, unsigned>> ContractType::stateVariables() const
+std::vector<std::tuple<VariableDeclaration const*, u256, unsigned>> ContractType::stateVariables(DataLocation _location) const
 {
+	VariableDeclaration::Location location;
+	switch (_location)
+	{
+	case DataLocation::Storage:
+		location = VariableDeclaration::Location::Unspecified;
+		break;
+	case DataLocation::Transient:
+		location = VariableDeclaration::Location::Transient;
+		break;
+	default:
+		solAssert(false);
+	}
+
 	std::vector<VariableDeclaration const*> variables;
 	for (ContractDefinition const* contract: m_contract.annotation().linearizedBaseContracts | ranges::views::reverse)
 		for (VariableDeclaration const* variable: contract->stateVariables())
-			if (!(variable->isConstant() || variable->immutable()))
+			if (!(variable->isConstant() || variable->immutable()) && variable->referenceLocation() == location)
 				variables.push_back(variable);
 	TypePointers types;
 	for (auto variable: variables)
@@ -2568,6 +2603,9 @@ std::vector<std::tuple<std::string, Type const*>> StructType::makeStackItems() c
 			return {std::make_tuple("mpos", TypeProvider::uint256())};
 		case DataLocation::Storage:
 			return {std::make_tuple("slot", TypeProvider::uint256())};
+		case DataLocation::Transient:
+			solUnimplemented("Transient data location is only supported for value types.");
+			break;
 	}
 	solAssert(false, "");
 }
@@ -2674,7 +2712,12 @@ bool UserDefinedValueType::operator==(Type const& _other) const
 	if (_other.category() != category())
 		return false;
 	UserDefinedValueType const& other = dynamic_cast<UserDefinedValueType const&>(_other);
-	return other.definition() == definition();
+	return *this == other;
+}
+
+bool UserDefinedValueType::operator==(UserDefinedValueType const& _other) const
+{
+	return _other.definition() == definition();
 }
 
 std::string UserDefinedValueType::toString(bool /* _withoutDataLocation */) const
@@ -2919,13 +2962,15 @@ FunctionType::FunctionType(ErrorDefinition const& _error):
 		m_parameterTypes.push_back(var->annotation().type);
 	}
 
+	m_returnParameterNames.push_back("");
+	m_returnParameterTypes.push_back(TypeProvider::magic(MagicType::Kind::Error));
+
 	solAssert(
 		m_parameterNames.size() == m_parameterTypes.size(),
 		"Parameter names list must match parameter types list!"
 	);
 	solAssert(
-		m_returnParameterNames.size() == 0 &&
-		m_returnParameterTypes.size() == 0,
+		m_returnParameterNames.size() == m_returnParameterTypes.size(),
 		""
 	);
 }
@@ -4026,6 +4071,11 @@ bool ModifierType::operator==(Type const& _other) const
 {
 	if (_other.category() != category())
 		return false;
+	return *this == dynamic_cast<ModifierType const&>(_other);
+}
+
+bool ModifierType::operator==(ModifierType const& _other) const
+{
 	ModifierType const& other = dynamic_cast<ModifierType const&>(_other);
 
 	if (m_parameterTypes.size() != other.m_parameterTypes.size())
@@ -4091,6 +4141,8 @@ std::string MagicType::richIdentifier() const
 	case Kind::MetaType:
 		solAssert(m_typeArgument, "");
 		return "t_magic_meta_type_" + m_typeArgument->richIdentifier();
+	case Kind::Error:
+		return "t_error";
 	}
 	return "";
 }
@@ -4196,6 +4248,8 @@ MemberList::MemberMap MagicType::nativeMembers(ASTNode const*) const
 				FunctionType::Options::withArbitraryParameters()
 			)}
 		});
+	case Kind::Error:
+		return {};
 	case Kind::MetaType:
 	{
 		solAssert(
@@ -4259,6 +4313,8 @@ std::string MagicType::toString(bool _withoutDataLocation) const
 	case Kind::MetaType:
 		solAssert(m_typeArgument, "");
 		return "type(" + m_typeArgument->toString(_withoutDataLocation) + ")";
+	case Kind::Error:
+		return "error";
 	}
 	solAssert(false, "Unknown kind of magic.");
 	return {};

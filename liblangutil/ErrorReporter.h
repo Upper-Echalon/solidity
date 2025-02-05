@@ -118,6 +118,11 @@ public:
 
 	void docstringParsingError(ErrorId _error, SourceLocation const& _location, std::string const& _description);
 
+	void unimplementedFeatureError(ErrorId _error, SourceLocation const& _location, std::string const& _description);
+
+	void codeGenerationError(ErrorId _error, SourceLocation const& _location, std::string const& _description);
+	void codeGenerationError(Error const& _error);
+
 	ErrorList const& errors() const;
 
 	void clear();
@@ -126,6 +131,12 @@ public:
 	bool hasErrors() const
 	{
 		return m_errorCount > 0;
+	}
+
+	/// @returns true if there is any error, warning or info.
+	bool hasErrorsWarningsOrInfos() const
+	{
+		return m_errorCount + m_warningCount + m_infoCount > 0;
 	}
 
 	/// @returns the number of errors (ignores warnings and infos).

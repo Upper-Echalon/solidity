@@ -224,7 +224,7 @@ void ArrayUtils::copyArrayToStorage(ArrayType const& _targetType, ArrayType cons
 				else if (sourceBaseType->isValueType())
 					CompilerUtils(_context).loadFromMemoryDynamic(*sourceBaseType, fromCalldata, true, false);
 				else
-					solUnimplemented("Copying of type " + _sourceType.toString(false) + " to storage not yet supported.");
+					solUnimplemented("Copying of type " + _sourceType.toString(false) + " to storage is not supported in legacy (only supported by the IR pipeline). Hint: try compiling with `--via-ir` (CLI) or the equivalent `viaIR: true` (Standard JSON)");
 				// stack: target_ref target_data_end source_data_pos target_data_pos source_data_end [target_byte_offset] [source_byte_offset] <source_value>...
 				assertThrow(
 					2 + byteOffsetSize + sourceBaseType->sizeOnStack() <= 16,
@@ -710,7 +710,7 @@ void ArrayUtils::resizeDynamicArray(ArrayType const& _typeIn) const
 				CompilerUtils(_context).computeHashStatic();
 				_context << Instruction::SSTORE;
 				// stack: ref new_length current_length
-				// Store new length: Compule 2*length + 1 and store it.
+				// Store new length: Compute 2*length + 1 and store it.
 				_context << Instruction::DUP2 << Instruction::DUP1 << Instruction::ADD;
 				_context << u256(1) << Instruction::ADD;
 				// stack: ref new_length current_length 2*new_length+1
@@ -1021,6 +1021,9 @@ void ArrayUtils::retrieveLength(ArrayType const& _arrayType, unsigned _stackDept
 			if (_arrayType.isByteArrayOrString())
 				m_context.callYulFunction(m_context.utilFunctions().extractByteArrayLengthFunction(), 1, 1);
 			break;
+		case DataLocation::Transient:
+			solUnimplemented("Transient data location is only supported for value types.");
+			break;
 		}
 	}
 }
@@ -1118,6 +1121,9 @@ void ArrayUtils::accessIndex(ArrayType const& _arrayType, bool _doBoundsCheck, b
 		m_context << endTag;
 		break;
 	}
+	case DataLocation::Transient:
+		solUnimplemented("Transient data location is only supported for value types.");
+		break;
 	}
 }
 

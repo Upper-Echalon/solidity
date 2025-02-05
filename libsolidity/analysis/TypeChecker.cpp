@@ -80,18 +80,6 @@ bool TypeChecker::checkTypeRequirements(SourceUnit const& _source)
 	return !Error::containsErrors(m_errorReporter.errors());
 }
 
-Type const* TypeChecker::type(Expression const& _expression) const
-{
-	solAssert(!!_expression.annotation().type, "Type requested but not present.");
-	return _expression.annotation().type;
-}
-
-Type const* TypeChecker::type(VariableDeclaration const& _variable) const
-{
-	solAssert(!!_variable.annotation().type, "Type requested but not present.");
-	return _variable.annotation().type;
-}
-
 bool TypeChecker::visit(ContractDefinition const& _contract)
 {
 	m_currentContract = &_contract;
@@ -104,102 +92,6 @@ bool TypeChecker::visit(ContractDefinition const& _contract)
 	m_currentContract = nullptr;
 
 	return false;
-}
-
-void TypeChecker::checkDoubleStorageAssignment(Assignment const& _assignment)
-{
-	size_t storageToStorageCopies = 0;
-	size_t toStorageCopies = 0;
-	size_t storageByteArrayPushes = 0;
-	size_t storageByteAccesses = 0;
-	auto count = [&](TupleExpression const& _lhs, TupleType const& _rhs, auto _recurse) -> void {
-		TupleType const& lhsType = dynamic_cast<TupleType const&>(*type(_lhs));
-		TupleExpression const* lhsResolved = dynamic_cast<TupleExpression const*>(resolveOuterUnaryTuples(&_lhs));
-
-		if (lhsType.components().size() != _rhs.components().size() || lhsResolved->components().size() != _rhs.components().size())
-		{
-			solAssert(m_errorReporter.hasErrors(), "");
-			return;
-		}
-
-		for (auto&& [index, componentType]: lhsType.components() | ranges::views::enumerate)
-		{
-			if (ReferenceType const* ref = dynamic_cast<ReferenceType const*>(componentType))
-			{
-				if (ref && ref->dataStoredIn(DataLocation::Storage) && !ref->isPointer())
-				{
-					toStorageCopies++;
-					if (_rhs.components()[index]->dataStoredIn(DataLocation::Storage))
-						storageToStorageCopies++;
-				}
-			}
-			else if (FixedBytesType const* bytesType = dynamic_cast<FixedBytesType const*>(componentType))
-			{
-				if (bytesType && bytesType->numBytes() == 1)
-				{
-					if (FunctionCall const* lhsCall = dynamic_cast<FunctionCall const*>(resolveOuterUnaryTuples(lhsResolved->components().at(index).get())))
-					{
-						FunctionType const& callType = dynamic_cast<FunctionType const&>(*type(lhsCall->expression()));
-						if (callType.kind() == FunctionType::Kind::ArrayPush)
-						{
-							ArrayType const& arrayType = dynamic_cast<ArrayType const&>(*callType.selfType());
-							if (arrayType.isByteArray() && arrayType.dataStoredIn(DataLocation::Storage))
-							{
-								++storageByteAccesses;
-								++storageByteArrayPushes;
-							}
-						}
-					}
-					else if (IndexAccess const* indexAccess = dynamic_cast<IndexAccess const*>(resolveOuterUnaryTuples(lhsResolved->components().at(index).get())))
-					{
-						if (ArrayType const* arrayType = dynamic_cast<ArrayType const*>(type(indexAccess->baseExpression())))
-							if (arrayType->isByteArray() && arrayType->dataStoredIn(DataLocation::Storage))
-								++storageByteAccesses;
-					}
-				}
-			}
-			else if (TupleType const* tupleType = dynamic_cast<TupleType const*>(componentType))
-				if (auto const* lhsNested = dynamic_cast<TupleExpression const*>(lhsResolved->components().at(index).get()))
-					if (auto const* rhsNestedType = dynamic_cast<TupleType const*>(_rhs.components().at(index)))
-						_recurse(
-							*lhsNested,
-							*rhsNestedType,
-							_recurse
-						);
-		}
-	};
-
-	TupleExpression const* lhsTupleExpression = dynamic_cast<TupleExpression const*>(&_assignment.leftHandSide());
-	if (!lhsTupleExpression)
-	{
-		solAssert(m_errorReporter.hasErrors());
-		return;
-	}
-	count(
-		*lhsTupleExpression,
-		dynamic_cast<TupleType const&>(*type(_assignment.rightHandSide())),
-		count
-	);
-
-	if (storageToStorageCopies >= 1 && toStorageCopies >= 2)
-		m_errorReporter.warning(
-			7238_error,
-			_assignment.location(),
-			"This assignment performs two copies to storage. Since storage copies do not first "
-			"copy to a temporary location, one of them might be overwritten before the second "
-			"is executed and thus may have unexpected effects. It is safer to perform the copies "
-			"separately or assign to storage pointers first."
-		);
-
-	if (storageByteArrayPushes >= 1 && storageByteAccesses >= 2)
-		m_errorReporter.warning(
-			7239_error,
-			_assignment.location(),
-			"This assignment involves multiple accesses to a bytes array in storage while simultaneously enlarging it. "
-			"When a bytes array is enlarged, it may transition from short storage layout to long storage layout, "
-			"which invalidates all references to its elements. It is safer to only enlarge byte arrays in a single "
-			"operation, one element at a time."
-		);
 }
 
 TypePointers TypeChecker::typeCheckABIDecodeAndRetrieveReturnType(FunctionCall const& _functionCall, bool _abiEncoderV2)
@@ -893,7 +785,7 @@ bool TypeChecker::visit(InlineAssembly const& _inlineAssembly)
 				}
 				else if (identifierInfo.suffix == "slot" || identifierInfo.suffix == "offset")
 				{
-					m_errorReporter.typeError(6617_error, nativeLocationOf(_identifier), "The suffixes .offset and .slot can only be used on non-constant storage variables.");
+					m_errorReporter.typeError(6617_error, nativeLocationOf(_identifier), "The suffixes .offset and .slot can only be used on non-constant storage or transient storage variables.");
 					return false;
 				}
 				else if (var && var->value() && !var->value()->annotation().type && !dynamic_cast<Literal const*>(var->value().get()))
@@ -932,7 +824,7 @@ bool TypeChecker::visit(InlineAssembly const& _inlineAssembly)
 					{
 						if (var->isStateVariable())
 						{
-							m_errorReporter.typeError(4713_error, nativeLocationOf(_identifier), "State variables cannot be assigned to - you have to use \"sstore()\".");
+							m_errorReporter.typeError(4713_error, nativeLocationOf(_identifier), "State variables cannot be assigned to - you have to use \"sstore()\" or \"tstore()\".");
 							return false;
 						}
 						else if (suffix != "slot")
@@ -977,7 +869,7 @@ bool TypeChecker::visit(InlineAssembly const& _inlineAssembly)
 				m_errorReporter.typeError(
 					1408_error,
 					nativeLocationOf(_identifier),
-					"Only local variables are supported. To access storage variables, use the \".slot\" and \".offset\" suffixes."
+					"Only local variables are supported. To access state variables, use the \".slot\" and \".offset\" suffixes."
 				);
 				return false;
 			}
@@ -1048,7 +940,7 @@ bool TypeChecker::visit(InlineAssembly const& _inlineAssembly)
 		_inlineAssembly.dialect(),
 		identifierAccess
 	);
-	if (!analyzer.analyze(_inlineAssembly.operations()))
+	if (!analyzer.analyze(_inlineAssembly.operations().root()))
 		solAssert(m_errorReporter.hasErrors());
 	_inlineAssembly.annotation().hasMemoryEffects =
 		lvalueAccessToMemoryVariable ||
@@ -1562,10 +1454,7 @@ void TypeChecker::checkExpressionAssignment(Type const& _type, Expression const&
 
 bool TypeChecker::visit(Assignment const& _assignment)
 {
-	requireLValue(
-		_assignment.leftHandSide(),
-		_assignment.assignmentOperator() == Token::Assign
-	);
+	requireLValue(_assignment.leftHandSide());
 	Type const* t = type(_assignment.leftHandSide());
 	_assignment.annotation().type = t;
 	_assignment.annotation().isPure = false;
@@ -1586,10 +1475,6 @@ bool TypeChecker::visit(Assignment const& _assignment)
 		_assignment.annotation().type = TypeProvider::emptyTuple();
 
 		expectType(_assignment.rightHandSide(), *tupleType);
-
-		// expectType does not cause fatal errors, so we have to check again here.
-		if (dynamic_cast<TupleType const*>(type(_assignment.rightHandSide())))
-			checkDoubleStorageAssignment(_assignment);
 	}
 	else if (_assignment.assignmentOperator() == Token::Assign)
 		expectType(_assignment.rightHandSide(), *t);
@@ -1630,10 +1515,7 @@ bool TypeChecker::visit(TupleExpression const& _tuple)
 		for (auto const& component: components)
 			if (component)
 			{
-				requireLValue(
-					*component,
-					_tuple.annotation().lValueOfOrdinaryAssignment
-				);
+				requireLValue(*component);
 				types.push_back(type(*component));
 			}
 			else
@@ -1726,7 +1608,7 @@ bool TypeChecker::visit(UnaryOperation const& _operation)
 	Token op = _operation.getOperator();
 	bool const modifying = (op == Token::Inc || op == Token::Dec || op == Token::Delete);
 	if (modifying)
-		requireLValue(_operation.subExpression(), false);
+		requireLValue(_operation.subExpression());
 	else
 		_operation.subExpression().accept(*this);
 	Type const* operandType = type(_operation.subExpression());
@@ -3079,6 +2961,12 @@ bool TypeChecker::visit(FunctionCallOptions const& _functionCallOptions)
 					_functionCallOptions.location(),
 					"Function call option \"gas\" cannot be used with \"new\"."
 				);
+			else if (m_eofVersion.has_value())
+				m_errorReporter.typeError(
+					3765_error,
+					_functionCallOptions.location(),
+					"Function call option \"gas\" cannot be used when compiling to EOF."
+				);
 			else
 			{
 				expectType(*_functionCallOptions.options()[i], *TypeProvider::uint256());
@@ -4243,10 +4131,9 @@ bool TypeChecker::expectType(Expression const& _expression, Type const& _expecte
 	return true;
 }
 
-void TypeChecker::requireLValue(Expression const& _expression, bool _ordinaryAssignment)
+void TypeChecker::requireLValue(Expression const& _expression)
 {
 	_expression.annotation().willBeWrittenTo = true;
-	_expression.annotation().lValueOfOrdinaryAssignment = _ordinaryAssignment;
 	_expression.accept(*this);
 
 	if (*_expression.annotation().isLValue)

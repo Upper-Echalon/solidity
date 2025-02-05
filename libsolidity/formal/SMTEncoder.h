@@ -57,6 +57,7 @@ public:
 		ModelCheckerSettings _settings,
 		langutil::UniqueErrorReporter& _errorReporter,
 		langutil::UniqueErrorReporter& _unsupportedErrorReporter,
+		langutil::ErrorReporter& _provedSafeReporter,
 		langutil::CharStreamProvider const& _charStreamProvider
 	);
 
@@ -70,7 +71,7 @@ public:
 
 	/// @returns the innermost element in a chain of 1-tuples if applicable,
 	/// otherwise _expr.
-	static Expression const* innermostTuple(Expression const& _expr);
+	static Expression const& innermostTuple(Expression const& _expr);
 
 	/// @returns the underlying type if _type is UserDefinedValueType,
 	/// and _type otherwise.
@@ -129,6 +130,19 @@ public:
 	static std::set<SourceUnit const*, ASTNode::CompareByID> sourceDependencies(SourceUnit const& _source);
 
 protected:
+	struct TransientDataLocationChecker: ASTConstVisitor
+	{
+		TransientDataLocationChecker(ContractDefinition const& _contract) { _contract.accept(*this); }
+
+		void endVisit(VariableDeclaration const& _var)
+		{
+			solUnimplementedAssert(
+				_var.referenceLocation() != VariableDeclaration::Location::Transient,
+				"Transient storage variables are not supported."
+			);
+		}
+	};
+
 	void resetSourceAnalysis();
 
 	// TODO: Check that we do not have concurrent reads and writes to a variable,
@@ -215,6 +229,7 @@ protected:
 	void visitBytesConcat(FunctionCall const& _funCall);
 	void visitCryptoFunction(FunctionCall const& _funCall);
 	void visitGasLeft(FunctionCall const& _funCall);
+	void visitBlobHash(FunctionCall const& _funCall);
 	virtual void visitAddMulMod(FunctionCall const& _funCall);
 	void visitWrapUnwrap(FunctionCall const& _funCall);
 	void visitObjectCreation(FunctionCall const& _funCall);
@@ -425,6 +440,9 @@ protected:
 	/// Create symbolic variables for the free constants in all @param _sources.
 	void createFreeConstants(std::set<SourceUnit const*, ASTNode::CompareByID> const& _sources);
 
+	/// Create symbolic variables for all state variables for all contracts in all @param _sources.
+	void createStateVariables(std::set<SourceUnit const*, ASTNode::CompareByID> const& _sources);
+
 	/// @returns a note to be added to warnings.
 	std::string extraComment();
 
@@ -450,6 +468,7 @@ protected:
 
 	langutil::UniqueErrorReporter& m_errorReporter;
 	langutil::UniqueErrorReporter& m_unsupportedErrors;
+	langutil::ErrorReporter& m_provedSafeReporter;
 
 	/// Stores the current function/modifier call/invocation path.
 	std::vector<CallStackEntry> m_callStack;

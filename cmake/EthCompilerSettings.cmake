@@ -89,9 +89,15 @@ if (("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU") OR ("${CMAKE_CXX_COMPILER_ID}" MA
 
 	# Additional GCC-specific compiler settings.
 	if ("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU")
-		# Check that we've got GCC 8.0 or newer.
-		if (NOT (CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 8.0))
-			message(FATAL_ERROR "${PROJECT_NAME} requires g++ 8.0 or greater.")
+		# Check that we've got GCC 11.0 or newer.
+		if (NOT (CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 11.0))
+			message(FATAL_ERROR "${PROJECT_NAME} requires g++ 11.0 or greater.")
+		endif ()
+
+		# GCC 12 emits warnings for string concatenations with operator+ under O3
+		# See https://gcc.gnu.org/bugzilla/show_bug.cgi?id=105651
+		if (CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 12.0 AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 13.0)
+			add_compile_options(-Wno-error=restrict)
 		endif ()
 
 		# Use fancy colors in the compiler diagnostics
@@ -99,11 +105,13 @@ if (("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU") OR ("${CMAKE_CXX_COMPILER_ID}" MA
 
 	# Additional Clang-specific compiler settings.
 	elseif ("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
-		# Check that we've got clang 7.0 or newer.
-		if (NOT (CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 7.0))
-			message(FATAL_ERROR "${PROJECT_NAME} requires clang++ 7.0 or greater.")
+		# Check that we've got clang 14.0 or newer.
+		if (NOT (CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 14.0))
+			message(FATAL_ERROR "${PROJECT_NAME} requires clang++ 14.0 or greater.")
 		endif ()
 
+		# use std::invoke_result, superseding std::result_of which has been removed in c++20
+		add_compile_definitions(BOOST_ASIO_HAS_STD_INVOKE_RESULT)
 		if ("${CMAKE_SYSTEM_NAME}" MATCHES "Darwin")
 			# Set stack size to 32MB - by default Apple's clang defines a stack size of 8MB.
 			# Normally 16MB is enough to run all tests, but it will exceed the stack, if -DSANITIZE=address is used.
@@ -260,20 +268,3 @@ if(COVERAGE)
 	endif()
 	add_compile_options(-g --coverage)
 endif()
-
-# SMT Solvers integration
-option(USE_Z3 "Allow compiling with Z3 SMT solver integration" ON)
-if(UNIX AND NOT APPLE)
-	option(USE_Z3_DLOPEN "Dynamically load the Z3 SMT solver instead of linking against it." OFF)
-endif()
-option(USE_CVC4 "Allow compiling with CVC4 SMT solver integration" ON)
-
-if (("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU") OR ("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang"))
-	option(USE_LD_GOLD "Use GNU gold linker" ON)
-	if (USE_LD_GOLD)
-		execute_process(COMMAND ${CMAKE_CXX_COMPILER} -fuse-ld=gold -Wl,--version ERROR_QUIET OUTPUT_VARIABLE LD_VERSION)
-		if ("${LD_VERSION}" MATCHES "GNU gold")
-			set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fuse-ld=gold")
-		endif ()
-	endif ()
-endif ()

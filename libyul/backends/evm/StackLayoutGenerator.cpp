@@ -26,8 +26,6 @@
 #include <libevmasm/GasMeter.h>
 
 #include <libsolutil/Algorithms.h>
-#include <libsolutil/cxx20.h>
-#include <libsolutil/Visitor.h>
 
 #include <range/v3/algorithm/any_of.hpp>
 #include <range/v3/algorithm/find.hpp>
@@ -47,30 +45,30 @@
 using namespace solidity;
 using namespace solidity::yul;
 
-StackLayout StackLayoutGenerator::run(CFG const& _cfg)
+StackLayout StackLayoutGenerator::run(CFG const& _cfg, bool _simulateFunctionsWithJumps)
 {
-	StackLayout stackLayout;
-	StackLayoutGenerator{stackLayout, nullptr}.processEntryPoint(*_cfg.entry);
+	StackLayout stackLayout{{}, {}};
+	StackLayoutGenerator{stackLayout, nullptr, _simulateFunctionsWithJumps}.processEntryPoint(*_cfg.entry);
 
 	for (auto& functionInfo: _cfg.functionInfo | ranges::views::values)
-		StackLayoutGenerator{stackLayout, &functionInfo}.processEntryPoint(*functionInfo.entry, &functionInfo);
+		StackLayoutGenerator{stackLayout, &functionInfo, _simulateFunctionsWithJumps}.processEntryPoint(*functionInfo.entry, &functionInfo);
 
 	return stackLayout;
 }
 
-std::map<YulString, std::vector<StackLayoutGenerator::StackTooDeep>> StackLayoutGenerator::reportStackTooDeep(CFG const& _cfg)
+std::map<YulName, std::vector<StackLayoutGenerator::StackTooDeep>> StackLayoutGenerator::reportStackTooDeep(CFG const& _cfg, bool _simulateFunctionsWithJumps)
 {
-	std::map<YulString, std::vector<StackLayoutGenerator::StackTooDeep>> stackTooDeepErrors;
-	stackTooDeepErrors[YulString{}] = reportStackTooDeep(_cfg, YulString{});
+	std::map<YulName, std::vector<StackLayoutGenerator::StackTooDeep>> stackTooDeepErrors;
+	stackTooDeepErrors[YulName{}] = reportStackTooDeep(_cfg, YulName{}, _simulateFunctionsWithJumps);
 	for (auto const& function: _cfg.functions)
-		if (auto errors = reportStackTooDeep(_cfg, function->name); !errors.empty())
+		if (auto errors = reportStackTooDeep(_cfg, function->name, _simulateFunctionsWithJumps); !errors.empty())
 			stackTooDeepErrors[function->name] = std::move(errors);
 	return stackTooDeepErrors;
 }
 
-std::vector<StackLayoutGenerator::StackTooDeep> StackLayoutGenerator::reportStackTooDeep(CFG const& _cfg, YulString _functionName)
+std::vector<StackLayoutGenerator::StackTooDeep> StackLayoutGenerator::reportStackTooDeep(CFG const& _cfg, YulName _functionName, bool _simulateFunctionsWithJumps)
 {
-	StackLayout stackLayout;
+	StackLayout stackLayout{{}, {}};
 	CFG::FunctionInfo const* functionInfo = nullptr;
 	if (!_functionName.empty())
 	{
@@ -82,15 +80,16 @@ std::vector<StackLayoutGenerator::StackTooDeep> StackLayoutGenerator::reportStac
 		yulAssert(functionInfo, "Function not found.");
 	}
 
-	StackLayoutGenerator generator{stackLayout, functionInfo};
+	StackLayoutGenerator generator{stackLayout, functionInfo, _simulateFunctionsWithJumps};
 	CFG::BasicBlock const* entry = functionInfo ? functionInfo->entry : _cfg.entry;
 	generator.processEntryPoint(*entry);
 	return generator.reportStackTooDeep(*entry);
 }
 
-StackLayoutGenerator::StackLayoutGenerator(StackLayout& _layout, CFG::FunctionInfo const* _functionInfo):
+StackLayoutGenerator::StackLayoutGenerator(StackLayout& _layout, CFG::FunctionInfo const* _functionInfo, bool _simulateFunctionsWithJumps):
 	m_layout(_layout),
-	m_currentFunctionInfo(_functionInfo)
+	m_currentFunctionInfo(_functionInfo),
+	m_simulateFunctionsWithJumps(_simulateFunctionsWithJumps)
 {
 }
 
@@ -102,7 +101,7 @@ std::vector<StackLayoutGenerator::StackTooDeep> findStackTooDeep(Stack const& _s
 	Stack currentStack = _source;
 	std::vector<StackLayoutGenerator::StackTooDeep> stackTooDeepErrors;
 	auto getVariableChoices = [](auto&& _range) {
-		std::vector<YulString> result;
+		std::vector<YulName> result;
 		for (auto const& slot: _range)
 			if (auto const* variableSlot = std::get_if<VariableSlot>(&slot))
 				if (!util::contains(result, variableSlot->variable.get().name))
@@ -464,7 +463,9 @@ std::optional<Stack> StackLayoutGenerator::getExitLayoutOrStageDependencies(
 			Stack stack = _functionReturn.info->returnVariables | ranges::views::transform([](auto const& _varSlot){
 				return StackSlot{_varSlot};
 			}) | ranges::to<Stack>;
-			stack.emplace_back(FunctionReturnLabelSlot{_functionReturn.info->function});
+
+			if (m_simulateFunctionsWithJumps)
+				stack.emplace_back(FunctionReturnLabelSlot{_functionReturn.info->function});
 			return stack;
 		},
 		[&](CFG::BasicBlock::Terminated const&) -> std::optional<Stack>
@@ -574,7 +575,7 @@ Stack StackLayoutGenerator::combineStack(Stack const& _stack1, Stack const& _sta
 	for (auto slot: stack2Tail)
 		if (!util::contains(candidate, slot))
 			candidate.emplace_back(slot);
-	cxx20::erase_if(candidate, [](StackSlot const& slot) {
+	std::erase_if(candidate, [](StackSlot const& slot) {
 		return std::holds_alternative<LiteralSlot>(slot) || std::holds_alternative<FunctionCallReturnLabelSlot>(slot);
 	});
 
@@ -735,7 +736,7 @@ void StackLayoutGenerator::fillInJunk(CFG::BasicBlock const& _block, CFG::Functi
 					_addChild(_conditionalJump.zero);
 					_addChild(_conditionalJump.nonZero);
 				},
-				[&](CFG::BasicBlock::FunctionReturn const&) { yulAssert(false); },
+				[&](CFG::BasicBlock::FunctionReturn const&) { yulAssert(!m_simulateFunctionsWithJumps); },
 				[&](CFG::BasicBlock::Terminated const&) {},
 			}, _block->exit);
 		});
@@ -771,7 +772,7 @@ void StackLayoutGenerator::fillInJunk(CFG::BasicBlock const& _block, CFG::Functi
 					yulAssert(util::contains(m_currentFunctionInfo->returnVariables, std::get<VariableSlot>(_slot)));
 					// Strictly speaking the cost of the PUSH0 depends on the targeted EVM version, but the difference
 					// will not matter here.
-					opGas += evmasm::GasMeter::runGas(evmasm::pushInstruction(0), langutil::EVMVersion());;
+					opGas += evmasm::GasMeter::pushGas(u256(0), langutil::EVMVersion());
 				}
 			}
 		};

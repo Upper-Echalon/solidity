@@ -41,7 +41,6 @@
 
 #include <fmt/format.h>
 
-#include <memory>
 #include <functional>
 
 using namespace std::string_literals;
@@ -69,20 +68,35 @@ bool AsmAnalyzer::analyze(Block const& _block)
 	auto watcher = m_errorReporter.errorWatcher();
 	try
 	{
+		// FIXME: Pass location of the object name. Now it's a location of first code section in yul
+		validateObjectStructure(nativeLocationOf(_block));
 		if (!(ScopeFiller(m_info, m_errorReporter))(_block))
 			return false;
 
 		(*this)(_block);
 	}
-	catch (FatalError const&)
+	catch (FatalError const& error)
 	{
-		// This FatalError con occur if the errorReporter has too many errors.
-		yulAssert(!watcher.ok(), "Fatal error detected, but no error is reported.");
+		// NOTE: There's a cap on the number of reported errors, but watcher.ok() will work fine even if
+		// we exceed it because the reporter keeps counting (it just stops adding errors to the list).
+		// Note also that fact of exceeding the cap triggers a FatalError so one can get thrown even
+		// if we don't make any of our errors fatal.
+		yulAssert(!watcher.ok(), "Unreported fatal error: "s + error.what());
 	}
 	return watcher.ok();
 }
 
-AsmAnalysisInfo AsmAnalyzer::analyzeStrictAssertCorrect(Dialect const& _dialect, Object const& _object)
+AsmAnalysisInfo AsmAnalyzer::analyzeStrictAssertCorrect(Object const& _object)
+{
+	yulAssert(_object.dialect());
+	return analyzeStrictAssertCorrect(*_object.dialect(), _object.code()->root(), _object.summarizeStructure());
+}
+
+AsmAnalysisInfo AsmAnalyzer::analyzeStrictAssertCorrect(
+	Dialect const& _dialect,
+	Block const& _astRoot,
+	Object::Structure const _objectStructure
+)
 {
 	ErrorList errorList;
 	langutil::ErrorReporter errors(errorList);
@@ -92,41 +106,38 @@ AsmAnalysisInfo AsmAnalyzer::analyzeStrictAssertCorrect(Dialect const& _dialect,
 		errors,
 		_dialect,
 		{},
-		_object.qualifiedDataNames()
-	).analyze(*_object.code);
+		std::move(_objectStructure)
+	).analyze(_astRoot);
 	yulAssert(success && !errors.hasErrors(), "Invalid assembly/yul code.");
 	return analysisInfo;
 }
 
-std::vector<YulString> AsmAnalyzer::operator()(Literal const& _literal)
+size_t AsmAnalyzer::operator()(Literal const& _literal)
 {
-	expectValidType(_literal.type, nativeLocationOf(_literal));
-	if (_literal.kind == LiteralKind::String && _literal.value.str().size() > 32)
+	bool erroneousLiteralValue = false;
+	if (_literal.kind == LiteralKind::String && !_literal.value.unlimited() && _literal.value.hint() && _literal.value.hint()->size() > 32)
+	{
+		erroneousLiteralValue = true;
 		m_errorReporter.typeError(
 			3069_error,
 			nativeLocationOf(_literal),
-			"String literal too long (" + std::to_string(_literal.value.str().size()) + " > 32)"
+			"String literal too long (" + std::to_string(formatLiteral(_literal, false /* _validated */ ).size()) + " > 32)"
 		);
-	else if (_literal.kind == LiteralKind::Number && bigint(_literal.value.str()) > u256(-1))
+	}
+	else if (_literal.kind == LiteralKind::Number && _literal.value.hint() && bigint(*_literal.value.hint()) > u256(-1))
+	{
+		erroneousLiteralValue = true;
 		m_errorReporter.typeError(6708_error, nativeLocationOf(_literal), "Number literal too large (> 256 bits)");
-	else if (_literal.kind == LiteralKind::Boolean)
-		yulAssert(_literal.value == "true"_yulstring || _literal.value == "false"_yulstring, "");
+	}
 
-	if (!m_dialect.validTypeForLiteral(_literal.kind, _literal.value, _literal.type))
-		m_errorReporter.typeError(
-			5170_error,
-			nativeLocationOf(_literal),
-			"Invalid type \"" + _literal.type.str() + "\" for literal \"" + _literal.value.str() + "\"."
-		);
-
-	return {_literal.type};
+	yulAssert(erroneousLiteralValue ^ validLiteral(_literal), "Invalid literal after validating it through AsmAnalyzer.");
+	return 1;
 }
 
-std::vector<YulString> AsmAnalyzer::operator()(Identifier const& _identifier)
+size_t AsmAnalyzer::operator()(Identifier const& _identifier)
 {
 	yulAssert(!_identifier.name.empty(), "");
 	auto watcher = m_errorReporter.errorWatcher();
-	YulString type = m_dialect.defaultType;
 
 	if (m_currentScope->lookup(_identifier.name, GenericVisitor{
 		[&](Scope::Variable const& _var)
@@ -137,7 +148,6 @@ std::vector<YulString> AsmAnalyzer::operator()(Identifier const& _identifier)
 					nativeLocationOf(_identifier),
 					"Variable " + _identifier.name.str() + " used before it was declared."
 				);
-			type = _var.type;
 		},
 		[&](Scope::Function const&)
 		{
@@ -174,21 +184,21 @@ std::vector<YulString> AsmAnalyzer::operator()(Identifier const& _identifier)
 
 	}
 
-	return {type};
+	return 1;
 }
 
 void AsmAnalyzer::operator()(ExpressionStatement const& _statement)
 {
 	auto watcher = m_errorReporter.errorWatcher();
-	std::vector<YulString> types = std::visit(*this, _statement.expression);
-	if (watcher.ok() && !types.empty())
+	size_t numReturns = std::visit(*this, _statement.expression);
+	if (watcher.ok() && numReturns > 0)
 		m_errorReporter.typeError(
 			3083_error,
 			nativeLocationOf(_statement),
 			"Top-level expressions are not supposed to return values (this expression returns " +
-			std::to_string(types.size()) +
+			std::to_string(numReturns) +
 			" value" +
-			(types.size() == 1 ? "" : "s") +
+			(numReturns == 1 ? "" : "s") +
 			"). Use ``pop()`` or assign them."
 		);
 }
@@ -199,7 +209,7 @@ void AsmAnalyzer::operator()(Assignment const& _assignment)
 	size_t const numVariables = _assignment.variableNames.size();
 	yulAssert(numVariables >= 1, "");
 
-	std::set<YulString> variables;
+	std::set<YulName> variables;
 	for (auto const& _variableName: _assignment.variableNames)
 		if (!variables.insert(_variableName.name).second)
 			m_errorReporter.declarationError(
@@ -210,9 +220,9 @@ void AsmAnalyzer::operator()(Assignment const& _assignment)
 				" occurs multiple times on the left-hand side of the assignment."
 			);
 
-	std::vector<YulString> types = std::visit(*this, *_assignment.value);
+	size_t numRhsValues = std::visit(*this, *_assignment.value);
 
-	if (types.size() != numVariables)
+	if (numRhsValues != numVariables)
 		m_errorReporter.declarationError(
 			8678_error,
 			nativeLocationOf(_assignment),
@@ -221,13 +231,12 @@ void AsmAnalyzer::operator()(Assignment const& _assignment)
 			"\" does not match number of values (" +
 			std::to_string(numVariables) +
 			" vs. " +
-			std::to_string(types.size()) +
+			std::to_string(numRhsValues) +
 			")"
 		);
 
 	for (size_t i = 0; i < numVariables; ++i)
-		if (i < types.size())
-			checkAssignment(_assignment.variableNames[i], types[i]);
+		checkAssignment(_assignment.variableNames[i]);
 }
 
 void AsmAnalyzer::operator()(VariableDeclaration const& _varDecl)
@@ -244,13 +253,12 @@ void AsmAnalyzer::operator()(VariableDeclaration const& _varDecl)
 	for (auto const& variable: _varDecl.variables)
 	{
 		expectValidIdentifier(variable.name, nativeLocationOf(variable));
-		expectValidType(variable.type, nativeLocationOf(variable));
 	}
 
 	if (_varDecl.value)
 	{
-		std::vector<YulString> types = std::visit(*this, *_varDecl.value);
-		if (types.size() != numVariables)
+		size_t numValues = std::visit(*this, *_varDecl.value);
+		if (numValues != numVariables)
 			m_errorReporter.declarationError(
 				3812_error,
 				nativeLocationOf(_varDecl),
@@ -259,26 +267,12 @@ void AsmAnalyzer::operator()(VariableDeclaration const& _varDecl)
 				+ "\": " +
 				std::to_string(numVariables) +
 				" variables and " +
-				std::to_string(types.size()) +
+				std::to_string(numValues) +
 				" values."
 			);
-
-		for (size_t i = 0; i < _varDecl.variables.size(); ++i)
-		{
-			YulString givenType = m_dialect.defaultType;
-			if (i < types.size())
-				givenType = types[i];
-			TypedName const& variable = _varDecl.variables[i];
-			if (variable.type != givenType)
-				m_errorReporter.typeError(
-					3947_error,
-					nativeLocationOf(variable),
-					"Assigning value of type \"" + givenType.str() + "\" to variable of type \"" + variable.type.str() + "\"."
-				);
-		}
 	}
 
-	for (TypedName const& variable: _varDecl.variables)
+	for (NameWithDebugData const& variable: _varDecl.variables)
 		m_activeVariables.insert(&std::get<Scope::Variable>(
 			m_currentScope->identifiers.at(variable.name))
 		);
@@ -294,24 +288,39 @@ void AsmAnalyzer::operator()(FunctionDefinition const& _funDef)
 	for (auto const& var: _funDef.parameters + _funDef.returnVariables)
 	{
 		expectValidIdentifier(var.name, nativeLocationOf(var));
-		expectValidType(var.type, nativeLocationOf(var));
 		m_activeVariables.insert(&std::get<Scope::Variable>(varScope.identifiers.at(var.name)));
+	}
+
+	if (m_eofVersion.has_value())
+	{
+		if (_funDef.parameters.size() >= 0x80)
+			m_errorReporter.typeError(
+				8534_error,
+				nativeLocationOf(_funDef),
+				"Too many function parameters. At most 127 parameters allowed for EOF"
+			);
+
+		if (_funDef.returnVariables.size() >= 0x80)
+			m_errorReporter.typeError(
+				2101_error,
+				nativeLocationOf(_funDef),
+				"Too many function return variables. At most 127 return variables allowed for EOF"
+			);
 	}
 
 	(*this)(_funDef.body);
 }
 
-std::vector<YulString> AsmAnalyzer::operator()(FunctionCall const& _funCall)
+size_t AsmAnalyzer::operator()(FunctionCall const& _funCall)
 {
-	yulAssert(!_funCall.functionName.name.empty(), "");
 	auto watcher = m_errorReporter.errorWatcher();
-	std::vector<YulString> const* parameterTypes = nullptr;
-	std::vector<YulString> const* returnTypes = nullptr;
+	std::optional<size_t> numParameters;
+	std::optional<size_t> numReturns;
 	std::vector<std::optional<LiteralKind>> const* literalArguments = nullptr;
 
-	if (BuiltinFunction const* f = m_dialect.builtin(_funCall.functionName.name))
+	if (BuiltinFunction const* builtin = resolveBuiltinFunction(_funCall.functionName, m_dialect))
 	{
-		if (_funCall.functionName.name == "selfdestruct"_yulstring)
+		if (builtin->name == "selfdestruct")
 			m_errorReporter.warning(
 				1699_error,
 				nativeLocationOf(_funCall.functionName),
@@ -324,7 +333,7 @@ std::vector<YulString> AsmAnalyzer::operator()(FunctionCall const& _funCall)
 			);
 		else if (
 			m_evmVersion.supportsTransientStorage() &&
-			_funCall.functionName.name == "tstore"_yulstring &&
+			builtin->name == "tstore" &&
 			!m_errorReporter.hasError({2394})
 		)
 			m_errorReporter.warning(
@@ -337,15 +346,15 @@ std::vector<YulString> AsmAnalyzer::operator()(FunctionCall const& _funCall)
 				"The use of transient storage for reentrancy guards that are cleared at the end of the call is safe."
 			);
 
-		parameterTypes = &f->parameters;
-		returnTypes = &f->returns;
-		if (!f->literalArguments.empty())
-			literalArguments = &f->literalArguments;
+		numParameters = builtin->numParameters;
+		numReturns = builtin->numReturns;
+		if (!builtin->literalArguments.empty())
+			literalArguments = &builtin->literalArguments;
 
 		validateInstructions(_funCall);
-		m_sideEffects += f->sideEffects;
+		m_sideEffects += builtin->sideEffects;
 	}
-	else if (m_currentScope->lookup(_funCall.functionName.name, GenericVisitor{
+	else if (m_currentScope->lookup(YulName{resolveFunctionName(_funCall.functionName, m_dialect)}, GenericVisitor{
 		[&](Scope::Variable const&)
 		{
 			m_errorReporter.typeError(
@@ -356,15 +365,16 @@ std::vector<YulString> AsmAnalyzer::operator()(FunctionCall const& _funCall)
 		},
 		[&](Scope::Function const& _fun)
 		{
-			parameterTypes = &_fun.arguments;
-			returnTypes = &_fun.returns;
+			numParameters = _fun.numArguments;
+			numReturns = _fun.numReturns;
 		}
 	}))
 	{
+		yulAssert(std::holds_alternative<Identifier>(_funCall.functionName));
 		if (m_resolver)
 			// We found a local reference, make sure there is no external reference.
 			m_resolver(
-				_funCall.functionName,
+				std::get<Identifier>(_funCall.functionName),
 				yul::IdentifierContext::NonExternal,
 				m_currentScope->insideFunction()
 			);
@@ -375,22 +385,23 @@ std::vector<YulString> AsmAnalyzer::operator()(FunctionCall const& _funCall)
 			m_errorReporter.declarationError(
 				4619_error,
 				nativeLocationOf(_funCall.functionName),
-				"Function \"" + _funCall.functionName.name.str() + "\" not found."
+				fmt::format("Function \"{}\" not found.", resolveFunctionName(_funCall.functionName, m_dialect))
 			);
 		yulAssert(!watcher.ok(), "Expected a reported error.");
 	}
 
-	if (parameterTypes && _funCall.arguments.size() != parameterTypes->size())
+	if (numParameters && _funCall.arguments.size() != *numParameters)
 		m_errorReporter.typeError(
 			7000_error,
 			nativeLocationOf(_funCall.functionName),
-			"Function \"" + _funCall.functionName.name.str() + "\" expects " +
-			std::to_string(parameterTypes->size()) +
-			" arguments but got " +
-			std::to_string(_funCall.arguments.size()) + "."
+			fmt::format(
+				"Function \"{}\" expects {} arguments but got {}.",
+				resolveFunctionName(_funCall.functionName, m_dialect),
+				*numParameters,
+				_funCall.arguments.size()
+			)
 		);
 
-	std::vector<YulString> argTypes;
 	for (size_t i = _funCall.arguments.size(); i > 0; i--)
 	{
 		Expression const& arg = _funCall.arguments[i - 1];
@@ -414,53 +425,93 @@ std::vector<YulString> AsmAnalyzer::operator()(FunctionCall const& _funCall)
 				);
 			else if (*literalArgumentKind == LiteralKind::String)
 			{
-				std::string functionName = _funCall.functionName.name.str();
+				std::string_view functionName = resolveFunctionName(_funCall.functionName, m_dialect);
 				if (functionName == "datasize" || functionName == "dataoffset")
 				{
-					if (!m_dataNames.count(std::get<Literal>(arg).value))
+					auto const& argumentAsLiteral = std::get<Literal>(arg);
+					if (!m_objectStructure.contains(formatLiteral(argumentAsLiteral)))
 						m_errorReporter.typeError(
 							3517_error,
 							nativeLocationOf(arg),
-							"Unknown data object \"" + std::get<Literal>(arg).value.str() + "\"."
+							"Unknown data object \"" + formatLiteral(argumentAsLiteral) + "\"."
 						);
 				}
 				else if (functionName.substr(0, "verbatim_"s.size()) == "verbatim_")
 				{
-					if (std::get<Literal>(arg).value.empty())
+					auto const& literalValue = std::get<Literal>(arg).value;
+					yulAssert(literalValue.unlimited());  // verbatim literals are always unlimited
+					if (literalValue.builtinStringLiteralValue().empty())
 						m_errorReporter.typeError(
 							1844_error,
 							nativeLocationOf(arg),
 							"The \"verbatim_*\" builtins cannot be used with empty bytecode."
 						);
 				}
+				else if (functionName == "eofcreate" || functionName == "returncontract")
+				{
+					auto const& argumentAsLiteral = std::get<Literal>(arg);
+					auto const formattedLiteral = formatLiteral(argumentAsLiteral);
 
-				argTypes.emplace_back(expectUnlimitedStringLiteral(std::get<Literal>(arg)));
+					if (util::contains(formattedLiteral, '.'))
+						m_errorReporter.typeError(
+							2186_error,
+							nativeLocationOf(arg),
+							fmt::format("Name required but path given as \"{}\" argument.", functionName)
+						);
+
+					if (!m_objectStructure.topLevelSubObjectNames().count(formattedLiteral))
+					{
+						if (m_objectStructure.containsData(formattedLiteral))
+							m_errorReporter.typeError(
+								7575_error,
+								nativeLocationOf(arg),
+								"Data name \"" + formattedLiteral + "\" cannot be used as an argument of eofcreate/returncontract. " +
+								"An object name is only acceptable."
+							);
+						else
+							m_errorReporter.typeError(
+								8970_error,
+								nativeLocationOf(arg),
+								"Unknown object \"" + formattedLiteral + "\"."
+							);
+					}
+				}
+				expectUnlimitedStringLiteral(std::get<Literal>(arg));
 				continue;
 			}
+			else if (*literalArgumentKind == LiteralKind::Number)
+			{
+				std::string_view functionName = resolveFunctionName(_funCall.functionName, m_dialect);
+				if (functionName == "auxdataloadn")
+				{
+					auto const& argumentAsLiteral = std::get<Literal>(arg);
+					if (argumentAsLiteral.value.value() > std::numeric_limits<uint16_t>::max())
+						m_errorReporter.typeError(
+							5202_error,
+							nativeLocationOf(arg),
+							"Invalid auxdataloadn argument value. Offset must be in range 0...0xFFFF"
+						);
+				}
+			}
 		}
-		argTypes.emplace_back(expectExpression(arg));
+		expectExpression(arg);
 	}
-	std::reverse(argTypes.begin(), argTypes.end());
-
-	if (parameterTypes && parameterTypes->size() == argTypes.size())
-		for (size_t i = 0; i < parameterTypes->size(); ++i)
-			expectType((*parameterTypes)[i], argTypes[i], nativeLocationOf(_funCall.arguments[i]));
 
 	if (watcher.ok())
 	{
-		yulAssert(parameterTypes && parameterTypes->size() == argTypes.size(), "");
-		yulAssert(returnTypes, "");
-		return *returnTypes;
+		yulAssert(numParameters && numParameters == _funCall.arguments.size());
+		yulAssert(numReturns);
+		return *numReturns;
 	}
-	else if (returnTypes)
-		return std::vector<YulString>(returnTypes->size(), m_dialect.defaultType);
+	else if (numReturns)
+		return *numReturns;
 	else
 		return {};
 }
 
 void AsmAnalyzer::operator()(If const& _if)
 {
-	expectBoolExpression(*_if.condition);
+	expectExpression(*_if.condition);
 
 	(*this)(_if.body);
 }
@@ -476,7 +527,7 @@ void AsmAnalyzer::operator()(Switch const& _switch)
 			"\"switch\" statement with only a default case."
 		);
 
-	YulString valueType = expectExpression(*_switch.expression);
+	expectExpression(*_switch.expression);
 
 	std::set<u256> cases;
 	for (auto const& _case: _switch.cases)
@@ -485,19 +536,17 @@ void AsmAnalyzer::operator()(Switch const& _switch)
 		{
 			auto watcher = m_errorReporter.errorWatcher();
 
-			expectType(valueType, _case.value->type, nativeLocationOf(*_case.value));
-
 			// We cannot use "expectExpression" here because *_case.value is not an
 			// Expression and would be converted to an Expression otherwise.
 			(*this)(*_case.value);
 
 			/// Note: the parser ensures there is only one default case
-			if (watcher.ok() && !cases.insert(valueOfLiteral(*_case.value)).second)
+			if (watcher.ok() && !cases.insert(_case.value->value.value()).second)
 				m_errorReporter.declarationError(
 					6792_error,
 					nativeLocationOf(_case),
 					"Duplicate case \"" +
-					valueOfLiteral(*_case.value).str() +
+					formatLiteral(*_case.value) +
 					"\" defined."
 				);
 		}
@@ -518,7 +567,7 @@ void AsmAnalyzer::operator()(ForLoop const& _for)
 	// condition, the body and the post part inside.
 	m_currentScope = &scope(&_for.pre);
 
-	expectBoolExpression(*_for.condition);
+	expectExpression(*_for.condition);
 	// backup outer for-loop & create new state
 	auto outerForLoop = m_currentForLoop;
 	m_currentForLoop = &_for;
@@ -541,48 +590,30 @@ void AsmAnalyzer::operator()(Block const& _block)
 	m_currentScope = previousScope;
 }
 
-YulString AsmAnalyzer::expectExpression(Expression const& _expr)
+void AsmAnalyzer::expectExpression(Expression const& _expr)
 {
-	std::vector<YulString> types = std::visit(*this, _expr);
-	if (types.size() != 1)
+	size_t numValues = std::visit(*this, _expr);
+	if (numValues != 1)
 		m_errorReporter.typeError(
 			3950_error,
 			nativeLocationOf(_expr),
 			"Expected expression to evaluate to one value, but got " +
-			std::to_string(types.size()) +
+			std::to_string(numValues) +
 			" values instead."
 		);
-	return types.empty() ? m_dialect.defaultType : types.front();
 }
 
-YulString AsmAnalyzer::expectUnlimitedStringLiteral(Literal const& _literal)
+void AsmAnalyzer::expectUnlimitedStringLiteral(Literal const& _literal)
 {
-	yulAssert(_literal.kind == LiteralKind::String, "");
-	yulAssert(m_dialect.validTypeForLiteral(LiteralKind::String, _literal.value, _literal.type), "");
-
-	return {_literal.type};
+	yulAssert(_literal.kind == LiteralKind::String);
+	yulAssert(_literal.value.unlimited());
 }
 
-void AsmAnalyzer::expectBoolExpression(Expression const& _expr)
-{
-	YulString type = expectExpression(_expr);
-	if (type != m_dialect.boolType)
-		m_errorReporter.typeError(
-			1733_error,
-			nativeLocationOf(_expr),
-			"Expected a value of boolean type \"" +
-			m_dialect.boolType.str() +
-			"\" but got \"" +
-			type.str() +
-			"\""
-		);
-}
-
-void AsmAnalyzer::checkAssignment(Identifier const& _variable, YulString _valueType)
+void AsmAnalyzer::checkAssignment(Identifier const& _variable)
 {
 	yulAssert(!_variable.name.empty(), "");
 	auto watcher = m_errorReporter.errorWatcher();
-	YulString const* variableType = nullptr;
+	bool hasVariable = false;
 	bool found = false;
 	if (Scope::Identifier const* var = m_currentScope->lookup(_variable.name))
 	{
@@ -603,7 +634,7 @@ void AsmAnalyzer::checkAssignment(Identifier const& _variable, YulString _valueT
 				"Variable " + _variable.name.str() + " used before it was declared."
 			);
 		else
-			variableType = &std::get<Scope::Variable>(*var).type;
+			hasVariable = true;
 		found = true;
 	}
 	else if (m_resolver)
@@ -612,25 +643,15 @@ void AsmAnalyzer::checkAssignment(Identifier const& _variable, YulString _valueT
 		if (m_resolver(_variable, yul::IdentifierContext::LValue, insideFunction))
 		{
 			found = true;
-			variableType = &m_dialect.defaultType;
+			hasVariable = true;
 		}
 	}
 
 	if (!found && watcher.ok())
 		// Only add message if the callback did not.
 		m_errorReporter.declarationError(4634_error, nativeLocationOf(_variable), "Variable not found or variable not lvalue.");
-	if (variableType && *variableType != _valueType)
-		m_errorReporter.typeError(
-			9547_error,
-			nativeLocationOf(_variable),
-			"Assigning a value of type \"" +
-			_valueType.str() +
-			"\" to a variable of type \"" +
-			variableType->str() +
-			"\"."
-		);
 
-	yulAssert(!watcher.ok() || variableType, "");
+	yulAssert(!watcher.ok() || hasVariable, "");
 }
 
 Scope& AsmAnalyzer::scope(Block const* _block)
@@ -641,7 +662,7 @@ Scope& AsmAnalyzer::scope(Block const* _block)
 	return *scopePtr;
 }
 
-void AsmAnalyzer::expectValidIdentifier(YulString _identifier, SourceLocation const& _location)
+void AsmAnalyzer::expectValidIdentifier(YulName _identifier, SourceLocation const& _location)
 {
 	// NOTE: the leading dot case is handled by the parser not allowing it.
 	if (boost::ends_with(_identifier.str(), "."))
@@ -658,7 +679,7 @@ void AsmAnalyzer::expectValidIdentifier(YulString _identifier, SourceLocation co
 			"\"" + _identifier.str() + "\" is not a valid identifier (contains consecutive dots)."
 		);
 
-	if (m_dialect.reservedIdentifier(_identifier))
+	if (m_dialect.reservedIdentifier(_identifier.str()))
 		m_errorReporter.declarationError(
 			5017_error,
 			_location,
@@ -666,34 +687,39 @@ void AsmAnalyzer::expectValidIdentifier(YulString _identifier, SourceLocation co
 		);
 }
 
-void AsmAnalyzer::expectValidType(YulString _type, SourceLocation const& _location)
-{
-	if (!m_dialect.types.count(_type))
-		m_errorReporter.typeError(
-			5473_error,
-			_location,
-			fmt::format("\"{}\" is not a valid type (user defined types are not yet supported).", _type)
-		);
-}
-
-void AsmAnalyzer::expectType(YulString _expectedType, YulString _givenType, SourceLocation const& _location)
-{
-	if (_expectedType != _givenType)
-		m_errorReporter.typeError(
-			3781_error,
-			_location,
-			fmt::format("Expected a value of type \"{}\" but got \"{}\".", _expectedType, _givenType)
-		);
-}
-
-bool AsmAnalyzer::validateInstructions(std::string const& _instructionIdentifier, langutil::SourceLocation const& _location)
+bool AsmAnalyzer::validateInstructions(std::string_view _instructionIdentifier, langutil::SourceLocation const& _location)
 {
 	// NOTE: This function uses the default EVM version instead of the currently selected one.
-	auto const builtin = EVMDialect::strictAssemblyForEVM(EVMVersion{}).builtin(YulString(_instructionIdentifier));
-	if (builtin && builtin->instruction.has_value())
-		return validateInstructions(builtin->instruction.value(), _location);
-	else
-		return false;
+	auto const& defaultEVMDialect = EVMDialect::strictAssemblyForEVMObjects(EVMVersion{}, std::nullopt);
+	auto const builtinHandle = defaultEVMDialect.findBuiltin(_instructionIdentifier);
+	if (builtinHandle && defaultEVMDialect.builtin(*builtinHandle).instruction.has_value())
+		return validateInstructions(*defaultEVMDialect.builtin(*builtinHandle).instruction, _location);
+
+	solAssert(!m_eofVersion.has_value() || (*m_eofVersion == 1 && m_evmVersion == langutil::EVMVersion::prague()));
+	// TODO: Change `prague()` to `EVMVersion{}` once EOF gets deployed
+	auto const& eofDialect = EVMDialect::strictAssemblyForEVMObjects(EVMVersion::prague(), 1);
+	auto const eofBuiltinHandle = eofDialect.findBuiltin(_instructionIdentifier);
+	if (eofBuiltinHandle)
+	{
+		auto const builtin = eofDialect.builtin(*eofBuiltinHandle);
+		if (builtin.instruction.has_value())
+			return validateInstructions(*builtin.instruction, _location);
+		// If builtin is available in EOF but not available in legacy (and we build to legacy) generate custom error.
+		else if (!m_eofVersion.has_value() && !builtinHandle)
+		{
+			m_errorReporter.declarationError(
+				7223_error,
+				_location,
+				fmt::format(
+					"Builtin function \"{}\" is only available in EOF.",
+					fmt::arg("function", _instructionIdentifier)
+				)
+			);
+			return true;
+		}
+	}
+
+	return false;
 }
 
 bool AsmAnalyzer::validateInstructions(evmasm::Instruction _instr, SourceLocation const& _location)
@@ -708,8 +734,16 @@ bool AsmAnalyzer::validateInstructions(evmasm::Instruction _instr, SourceLocatio
 	yulAssert(
 		_instr != evmasm::Instruction::JUMP &&
 		_instr != evmasm::Instruction::JUMPI &&
-		_instr != evmasm::Instruction::JUMPDEST,
-	"");
+		_instr != evmasm::Instruction::JUMPDEST &&
+		_instr != evmasm::Instruction::DATALOADN &&
+		_instr != evmasm::Instruction::EOFCREATE &&
+		_instr != evmasm::Instruction::RETURNCONTRACT &&
+		_instr != evmasm::Instruction::RJUMP &&
+		_instr != evmasm::Instruction::RJUMPI &&
+		_instr != evmasm::Instruction::CALLF &&
+		_instr != evmasm::Instruction::JUMPF &&
+		_instr != evmasm::Instruction::RETF
+	);
 
 	auto errorForVM = [&](ErrorId _errorId, std::string const& vmKindMessage) {
 		m_errorReporter.typeError(
@@ -765,13 +799,94 @@ bool AsmAnalyzer::validateInstructions(evmasm::Instruction _instr, SourceLocatio
 			"PC instruction is a low-level EVM feature. "
 			"Because of that PC is disallowed in strict assembly."
 		);
+	else if (!m_eofVersion.has_value() && (
+		_instr == evmasm::Instruction::EXTCALL ||
+		_instr == evmasm::Instruction::EXTDELEGATECALL ||
+		_instr == evmasm::Instruction::EXTSTATICCALL
+	))
+	{
+		m_errorReporter.typeError(
+			4328_error,
+			_location,
+			fmt::format(
+				"The \"{}\" instruction is only available in EOF.",
+				fmt::arg("instruction", boost::to_lower_copy(instructionInfo(_instr, m_evmVersion).name))
+			)
+		);
+	}
+	else if (m_eofVersion.has_value() && (
+		_instr == evmasm::Instruction::CALL ||
+		_instr == evmasm::Instruction::CALLCODE ||
+		_instr == evmasm::Instruction::DELEGATECALL ||
+		_instr == evmasm::Instruction::STATICCALL ||
+		_instr == evmasm::Instruction::SELFDESTRUCT ||
+		_instr == evmasm::Instruction::JUMP ||
+		_instr == evmasm::Instruction::JUMPI ||
+		_instr == evmasm::Instruction::PC ||
+		_instr == evmasm::Instruction::CREATE ||
+		_instr == evmasm::Instruction::CREATE2 ||
+		_instr == evmasm::Instruction::CODESIZE ||
+		_instr == evmasm::Instruction::CODECOPY ||
+		_instr == evmasm::Instruction::EXTCODESIZE ||
+		_instr == evmasm::Instruction::EXTCODECOPY ||
+		_instr == evmasm::Instruction::EXTCODEHASH ||
+		_instr == evmasm::Instruction::GAS
+	))
+	{
+		m_errorReporter.typeError(
+			9132_error,
+			_location,
+			fmt::format(
+				"The \"{instruction}\" instruction is {kind} VMs (you are currently compiling to EOF).",
+				fmt::arg("instruction", boost::to_lower_copy(instructionInfo(_instr, m_evmVersion).name)),
+				fmt::arg("kind", "only available in legacy bytecode")
+			)
+		);
+	}
 	else
+	{
+		// Sanity check
+		solAssert(m_evmVersion.hasOpcode(_instr, m_eofVersion));
 		return false;
+	}
 
+	// Sanity check
+	// PC is not available in strict assembly but it is always valid opcode in legacy evm.
+	solAssert(_instr == evmasm::Instruction::PC || !m_evmVersion.hasOpcode(_instr, m_eofVersion));
 	return true;
 }
 
 bool AsmAnalyzer::validateInstructions(FunctionCall const& _functionCall)
 {
-	return validateInstructions(_functionCall.functionName.name.str(), nativeLocationOf(_functionCall.functionName));
+	return validateInstructions(
+		resolveFunctionName(_functionCall.functionName, m_dialect),
+		nativeLocationOf(_functionCall.functionName)
+	);
+}
+
+void AsmAnalyzer::validateObjectStructure(langutil::SourceLocation _astRootLocation)
+{
+	if (m_eofVersion.has_value())
+	{
+		if (util::contains(m_objectStructure.objectName, '.')) // No dots in object name for EOF
+			m_errorReporter.syntaxError(
+				9822_error,
+				_astRootLocation,
+				fmt::format(
+					"The object name \"{objectName}\" is invalid in EOF context. Object names must not contain 'dot' character.",
+					fmt::arg("objectName", m_objectStructure.objectName)
+				)
+			);
+		else if (m_objectStructure.topLevelSubObjectNames().size() > 256)
+		{
+			m_errorReporter.syntaxError(
+				1305_error,
+				_astRootLocation,
+				fmt::format(
+					"Too many subobjects in \"{objectName}\". At most 256 subobjects allowed when compiling to EOF",
+					fmt::arg("objectName", m_objectStructure.objectName)
+				)
+			);
+		}
+	}
 }
