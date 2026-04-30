@@ -15,6 +15,7 @@ Compiler Features:
 
 Bugfixes:
 * Code Generator: Fix ICE on parenthesized custom error construction in require statement.
+* Code Generator: Fix uninitialized internal function pointers being read from a packed storage slot with the wrong value when a subsequent variable in the slot holds a non-zero value.
 * Commandline Interface: Report proper error instead of ICE on non-hex mixed-case address value given via `--libraries`.
 
 Build System:
