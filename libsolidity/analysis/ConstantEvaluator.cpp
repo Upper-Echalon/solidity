@@ -30,6 +30,8 @@
 #include <libsolutil/StringUtils.h>
 #include <libsolutil/FixedHash.h>
 
+#include <fmt/format.h>
+
 #include <limits>
 
 using namespace solidity;
@@ -453,7 +455,18 @@ void ConstantEvaluator::endVisit(FunctionCall const& _functionCall)
 	{
 		case FunctionType::Kind::ERC7201:
 		{
-			solAssert(_functionCall.arguments().size() == 1);
+			if (_functionCall.arguments().size() != 1)
+			{
+				m_errorReporter.typeError(
+					8248_error,
+					_functionCall.location(),
+					fmt::format(
+						"erc7201 builtin function expects 1 parameter, but {} were given.",
+						_functionCall.arguments().size()
+					)
+				);
+				return;
+			}
 			auto stringArg = evaluate(*(_functionCall.arguments()[0].get()));
 			if (!std::holds_alternative<std::string>(stringArg.value))
 				return;

@@ -13,6 +13,7 @@ Compiler Features:
 * General: Remove support for the experimental EOF (EVM Object Format) backend.
 
 Bugfixes:
+* Constant Evaluator: Fix ICE when evaluating `erc7201` builtin with wrong number of arguments.
 * NatSpec: Disallow `@return` tag in event documentation.
 * SMTChecker: Fix incorrect handling of constant operands of unary operations.
 * Standard JSON Interface: Fix incorrect serialization of `optimizer.runs` setting for values in the interval [INT64_MAX, UINT64_MAX].
