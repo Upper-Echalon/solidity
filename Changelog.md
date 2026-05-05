@@ -3,6 +3,7 @@
 Language Features:
 
 Compiler Features:
+* Commandline Interface: Remove support for the experimental Language Server Protocol (LSP) mode.
 * EVM-ASM Optimizer: Improve performance of block deduplicator.
 * SMTChecker: Emit a deprecation warning for the BMC engine.
 
