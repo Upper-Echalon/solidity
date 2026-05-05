@@ -461,7 +461,7 @@ void ConstantEvaluator::endVisit(FunctionCall const& _functionCall)
 					8248_error,
 					_functionCall.location(),
 					fmt::format(
-						"erc7201 builtin function expects 1 parameter, but {} were given.",
+						"erc7201 function expects 1 parameter, but {} were given.",
 						_functionCall.arguments().size()
 					)
 				);
@@ -469,7 +469,14 @@ void ConstantEvaluator::endVisit(FunctionCall const& _functionCall)
 			}
 			auto stringArg = evaluate(*(_functionCall.arguments()[0].get()));
 			if (!std::holds_alternative<std::string>(stringArg.value))
+			{
+				m_errorReporter.typeError(
+					9796_error,
+					_functionCall.arguments()[0]->location(),
+					"Invalid argument type for erc7201 function. Expected literal or constant string."
+				);
 				return;
+			}
 
 			h256 innerKeccak = keccak256(std::get<std::string>(stringArg.value));
 			h256 outerKeccak = keccak256(h256(u256(innerKeccak) - 1));
