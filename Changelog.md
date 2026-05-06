@@ -3,6 +3,7 @@
 Language Features:
 
 Compiler Features:
+* EVM-ASM Optimizer: Improve performance of block deduplicator.
 * SMTChecker: Emit a deprecation warning for the BMC engine.
 
 Bugfixes:
