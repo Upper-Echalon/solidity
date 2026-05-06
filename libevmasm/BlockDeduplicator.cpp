@@ -27,6 +27,8 @@
 #include <libevmasm/AssemblyItem.h>
 #include <libevmasm/SemanticInformation.h>
 
+#include <range/v3/algorithm/any_of.hpp>
+
 #include <functional>
 #include <set>
 
@@ -39,14 +41,14 @@ bool BlockDeduplicator::deduplicate()
 	// Compares indices based on the suffix that starts there, ignoring tags and stopping at
 	// opcodes that stop the control flow.
 
-	// Virtual tag that signifies "the current block" and which is used to optimise loops.
+	// Virtual tag that signifies "the current block" and which is used to optimize loops.
 	// We abort if this virtual tag actually exists.
-	AssemblyItem pushSelf{PushTag, u256(-4)};
-	if (
-		std::count(m_items.cbegin(), m_items.cend(), pushSelf.tag()) ||
-		std::count(m_items.cbegin(), m_items.cend(), pushSelf.pushTag())
-	)
-		return false;
+	AssemblyItem const pushSelf{PushTag, u256(-4)};
+	{
+		AssemblyItem const selfTag = pushSelf.tag();
+		if (ranges::any_of(m_items, [&](AssemblyItem const& _item) { return _item == selfTag || _item == pushSelf; }))
+			return false;
+	}
 
 	std::function<bool(size_t, size_t)> comparator = [&](size_t _i, size_t _j)
 	{
