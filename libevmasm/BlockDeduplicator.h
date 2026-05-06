@@ -75,6 +75,7 @@ private:
 		using difference_type = std::ptrdiff_t;
 		using pointer = AssemblyItem const*;
 		using reference = AssemblyItem const&;
+		BlockIterator() = default;
 		BlockIterator(
 			AssemblyItems::const_iterator _it,
 			AssemblyItems::const_iterator _end,
@@ -83,13 +84,14 @@ private:
 		):
 			it(_it), end(_end), replaceItem(_replaceItem), replaceWith(_replaceWith) {}
 		BlockIterator& operator++();
+		BlockIterator operator++(int) { auto tmp = *this; ++*this; return tmp; }
 		bool operator==(BlockIterator const& _other) const { return it == _other.it; }
 		bool operator!=(BlockIterator const& _other) const { return it != _other.it; }
 		AssemblyItem const& operator*() const;
 		AssemblyItems::const_iterator it;
 		AssemblyItems::const_iterator end;
-		AssemblyItem const* replaceItem;
-		AssemblyItem const* replaceWith;
+		AssemblyItem const* replaceItem = nullptr;
+		AssemblyItem const* replaceWith = nullptr;
 	};
 
 	std::map<u256, u256> m_replacedTags;
