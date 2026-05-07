@@ -30,6 +30,5 @@ contract C {
 }
 // ====
 // EVMVersion: >=constantinople
-// compileViaYul: true
 // ----
-// f() ->
+// f() -> FAILURE

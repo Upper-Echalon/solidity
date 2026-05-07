@@ -24,8 +24,10 @@ object "C_19" {
                         if slt(add(calldatasize(), not(3)), 0) { revert(0, 0) }
                         mstore(0, shl(225, 0x51616b33))
                         pop(staticcall(gas(), address(), 0, 4, 0, 0))
+                        let usr$rds := returndatasize()
                         mstore(0, shl(225, 0x7fd70add))
                         pop(staticcall(gas(), address(), 0, 4, 0, 0))
+                        returndatacopy(96, 0, usr$rds)
                         return(0, 0)
                     }
                     case 0xa2c2d666 { external_fun_e1() }

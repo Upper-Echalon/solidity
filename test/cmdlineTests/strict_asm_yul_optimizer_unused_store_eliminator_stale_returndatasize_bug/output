@@ -14,8 +14,10 @@ object "C" {
             default {
                 mstore(0, shl(225, 0x51616b33))
                 pop(staticcall(gas(), address(), 0, 0x04, 0, 0))
+                let s := returndatasize()
                 mstore(0, shl(225, 0x7fd70add))
                 pop(staticcall(gas(), address(), 0, 0x04, 0, 0))
+                returndatacopy(0, 0, s)
                 return(0, 0)
             }
         }

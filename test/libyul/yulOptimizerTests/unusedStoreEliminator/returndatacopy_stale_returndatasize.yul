@@ -17,7 +17,6 @@
 //         pop(staticcall(gas(), 0, 0, 0, 0, 0))
 //         let s := returndatasize()
 //         pop(staticcall(gas(), 0, 0, 0, 0, 0))
-//         let _15 := 0
-//         let _16 := 0
+//         returndatacopy(0, 0, s)
 //     }
 // }

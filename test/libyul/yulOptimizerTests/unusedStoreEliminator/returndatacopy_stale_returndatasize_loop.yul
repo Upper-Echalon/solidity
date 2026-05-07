@@ -28,8 +28,7 @@
 //         }
 //         {
 //             let i_13 := i
-//             let _2 := 0
-//             let _3 := 0
+//             returndatacopy(0, 0, s)
 //             pop(staticcall(gas(), 0, 0, 0, 0, 0))
 //         }
 //     }
