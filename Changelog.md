@@ -15,6 +15,7 @@ Compiler Features:
 
 Bugfixes:
 * Constant Evaluator: Fix ICE when evaluating `erc7201` builtin with wrong number of arguments.
+* Custom Storage Layout: Fix segfault when emitting the "too close to end of storage" warning for contracts with no storage variables.
 * NatSpec: Disallow `@return` tag in event documentation.
 * SMTChecker: Fix incorrect handling of constant operands of unary operations.
 * Standard JSON Interface: Fix incorrect serialization of `optimizer.runs` setting for values in the interval [INT64_MAX, UINT64_MAX].
