@@ -1,5 +1,8 @@
 ### 0.8.36 (unreleased)
 
+Important Bugfixes:
+* Yul Optimizer: Fix call graph cycle detection failing to classify some mutually recursive functions as recursive.
+
 Language Features:
 
 Compiler Features:
