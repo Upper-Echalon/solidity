@@ -43,6 +43,7 @@ set(libsolutil_sources
     libsolutil/LEB128.cpp
     libsolutil/StringUtils.cpp
     libsolutil/SwarmHash.cpp
+    libsolutil/TarjanSCC.cpp
     libsolutil/TemporaryDirectoryTest.cpp
     libsolutil/UTF8.cpp
     libsolutil/Whiskers.cpp
@@ -187,7 +188,6 @@ set(libyul_sources
     libyul/ssa/StackLayoutGeneratorTest.h
     libyul/ssa/StackShufflerTest.cpp
     libyul/ssa/StackShufflerTest.h
-    libyul/ssa/TarjanSCC.cpp
 )
 detect_stray_source_files("${libyul_sources}" "libyul/")
 
