@@ -95,7 +95,8 @@ void OptimiserSuite::run(
 	std::string_view _optimisationSequence,
 	std::string_view _optimisationCleanupSequence,
 	std::optional<std::uint64_t> _expectedExecutionsPerDeployment,
-	std::set<YulName> const& _externallyUsedIdentifiers
+	std::set<YulName> const& _externallyUsedIdentifiers,
+	bool _viaSSACFG
 )
 {
 	yulAssert(_object.dialect());
@@ -161,7 +162,7 @@ void OptimiserSuite::run(
 			PROFILER_PROBE("ConstantOptimiser", probe);
 			ConstantOptimiser{*evmDialect, *_meter}(astRoot);
 		}
-		if (usesOptimizedCodeGenerator)
+		if (usesOptimizedCodeGenerator && !_viaSSACFG)
 		{
 			{
 				PROFILER_PROBE("StackCompressor", probe);
