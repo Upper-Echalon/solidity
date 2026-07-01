@@ -23,7 +23,7 @@
 #include <libyul/backends/evm/ControlFlowGraph.h>
 #include <libyul/ControlFlowSideEffects.h>
 
-#include <unordered_map>
+#include <libsolutil/UnorderedContainers.h>
 
 namespace solidity::yul
 {
@@ -58,7 +58,7 @@ private:
 	ControlFlowGraphBuilder(
 		CFG& _graph,
 		AsmAnalysisInfo const& _analysisInfo,
-		std::unordered_map<FunctionDefinition const*, ControlFlowSideEffects> const& _functionSideEffects,
+		util::unordered_flat_map<FunctionDefinition const*, ControlFlowSideEffects> const& _functionSideEffects,
 		Dialect const& _dialect
 	);
 	void registerFunction(FunctionDefinition const& _function);
@@ -81,7 +81,7 @@ private:
 	);
 	CFG& m_graph;
 	AsmAnalysisInfo const& m_info;
-	std::unordered_map<FunctionDefinition const*, ControlFlowSideEffects> const& m_functionSideEffects;
+	util::unordered_flat_map<FunctionDefinition const*, ControlFlowSideEffects> const& m_functionSideEffects;
 	Dialect const& m_dialect;
 	CFG::BasicBlock* m_currentBlock = nullptr;
 	Scope* m_scope = nullptr;

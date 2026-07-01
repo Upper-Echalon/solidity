@@ -28,7 +28,6 @@
 #include <liblangutil/ErrorReporter.h>
 #include <libsolutil/StringUtils.h>
 #include <boost/algorithm/string.hpp>
-#include <unordered_set>
 
 using namespace std::string_literals;
 using namespace solidity::langutil;

@@ -21,11 +21,12 @@
 
 #pragma once
 
+#include <libsolutil/UnorderedContainers.h>
+
 #include <fmt/format.h>
 
 #include <deque>
 #include <memory>
-#include <unordered_map>
 #include <vector>
 #include <string>
 #include <string_view>
@@ -117,7 +118,7 @@ private:
 	}
 
 	std::deque<std::string> m_strings = {""};
-	std::unordered_multimap<std::uint64_t, size_t> m_hashToID = {{emptyHash(), 0}};
+	util::unordered_multimap<std::uint64_t, size_t> m_hashToID = {{emptyHash(), 0}};
 };
 
 /// Wrapper around handles into the YulString repository.

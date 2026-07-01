@@ -38,6 +38,7 @@ set(sources
 	TarjanSCC.h
 	TemporaryDirectory.cpp
 	TemporaryDirectory.h
+	UnorderedContainers.h
 	UTF8.cpp
 	UTF8.h
 	vector_ref.h

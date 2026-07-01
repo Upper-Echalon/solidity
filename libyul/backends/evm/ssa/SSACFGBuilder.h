@@ -45,8 +45,9 @@
 
 #include <libyul/AsmAnalysisInfo.h>
 
+#include <libsolutil/UnorderedContainers.h>
+
 #include <stack>
-#include <unordered_map>
 
 namespace solidity::yul::ssa
 {
@@ -61,7 +62,7 @@ public:
 	};
 	/// Lookup table for user-defined functions encountered during build, shared across
 	/// all SSACFGBuilder instances (one per function body) so they don't copy it.
-	using FunctionRegistry = std::unordered_map<Scope::Function const*, FunctionRegistration>;
+	using FunctionRegistry = solidity::util::unordered_flat_map<Scope::Function const*, FunctionRegistration>;
 
 private:
 	SSACFGBuilder(
@@ -154,10 +155,7 @@ private:
 	}
 	void sealBlock(SSACFG::BlockId _block);
 
-	std::unordered_map<
-		Scope::Variable const*,
-		std::vector<InstId>
-	> m_currentDef;
+	solidity::util::unordered_flat_map<Scope::Variable const*, std::vector<InstId>> m_currentDef;
 
 	struct ForLoopInfo {
 		SSACFG::BlockId breakBlock;

@@ -27,6 +27,7 @@
 #include <range/v3/view/map.hpp>
 
 #include <map>
+#include <unordered_map>
 #include <unordered_set>
 
 

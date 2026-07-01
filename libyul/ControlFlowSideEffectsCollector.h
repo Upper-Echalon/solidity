@@ -21,10 +21,10 @@
 #include <libyul/optimiser/ASTWalker.h>
 #include <libyul/ControlFlowSideEffects.h>
 
+#include <libsolutil/UnorderedContainers.h>
+
 #include <deque>
 #include <list>
-#include <unordered_map>
-#include <unordered_set>
 
 namespace solidity::yul
 {
@@ -56,7 +56,7 @@ public:
 	/// Computes the control-flows of all function defined in the block.
 	/// Assumes the functions are hoisted to the topmost block.
 	explicit ControlFlowBuilder(Block const& _ast);
-	std::unordered_map<FunctionDefinition const*, FunctionFlow> const& functionFlows() const { return m_functionFlows; }
+	util::unordered_flat_map<FunctionDefinition const*, FunctionFlow> const& functionFlows() const { return m_functionFlows; }
 
 private:
 	using ASTWalker::operator();
@@ -79,7 +79,7 @@ private:
 	ControlFlowNode const* m_break = nullptr;
 	ControlFlowNode const* m_continue = nullptr;
 
-	std::unordered_map<FunctionDefinition const*, FunctionFlow> m_functionFlows;
+	util::unordered_flat_map<FunctionDefinition const*, FunctionFlow> m_functionFlows;
 };
 
 
@@ -96,7 +96,7 @@ public:
 		Block const& _ast
 	);
 
-	std::unordered_map<FunctionDefinition const*, ControlFlowSideEffects> const& functionSideEffects() const
+	util::unordered_flat_map<FunctionDefinition const*, ControlFlowSideEffects> const& functionSideEffects() const
 	{
 		return m_functionSideEffects;
 	}
@@ -124,15 +124,15 @@ private:
 	Dialect const& m_dialect;
 	ControlFlowBuilder m_cfgBuilder;
 	/// Function references, but only for calls to user-defined functions.
-	std::unordered_map<FunctionCall const*, FunctionDefinition const*> m_functionReferences;
+	util::unordered_flat_map<FunctionCall const*, FunctionDefinition const*> m_functionReferences;
 	/// Side effects of user-defined functions, is being constructod.
-	std::unordered_map<FunctionDefinition const*, ControlFlowSideEffects> m_functionSideEffects;
+	util::unordered_flat_map<FunctionDefinition const*, ControlFlowSideEffects> m_functionSideEffects;
 	/// Control flow nodes still to process, per function.
-	std::unordered_map<FunctionDefinition const*, std::list<ControlFlowNode const*>> m_pendingNodes;
+	util::unordered_flat_map<FunctionDefinition const*, std::list<ControlFlowNode const*>> m_pendingNodes;
 	/// Control flow nodes already processed, per function.
-	std::unordered_map<FunctionDefinition const*, std::unordered_set<ControlFlowNode const*>> m_processedNodes;
+	util::unordered_flat_map<FunctionDefinition const*, util::unordered_flat_set<ControlFlowNode const*>> m_processedNodes;
 	/// Set of reachable function calls nodes in each function (including calls to builtins).
-	std::unordered_map<FunctionDefinition const*, std::unordered_set<FunctionCall const*>> m_functionCalls;
+	util::unordered_flat_map<FunctionDefinition const*, util::unordered_flat_set<FunctionCall const*>> m_functionCalls;
 };
 
 

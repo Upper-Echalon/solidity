@@ -27,9 +27,9 @@
 #include <libevmasm/AssemblyItem.h>
 
 #include <libsolutil/Common.h>
+#include <libsolutil/UnorderedContainers.h>
 
 #include <memory>
-#include <unordered_set>
 #include <vector>
 
 namespace solidity::langutil
@@ -43,6 +43,22 @@ namespace solidity::evmasm
 class Pattern;
 struct ExpressionTemplate;
 
+struct Expression
+{
+	unsigned id;
+	AssemblyItem const* item = nullptr;
+	std::vector<unsigned> arguments;
+	/// Storage modification sequence, only used for storage and memory operations.
+	unsigned sequenceNumber = 0;
+	/// Behaves as if this was a tuple of (item->type(), item->data(), arguments, sequenceNumber).
+	bool operator==(Expression const& _other) const;
+};
+
+struct ExpressionHash
+{
+	std::size_t operator()(Expression const& _expression) const;
+};
+
 /**
  * Collection of classes of equivalent expressions that can also determine the class of an expression.
  * Identifiers are contiguously assigned to new classes starting from zero.
@@ -52,23 +68,6 @@ class ExpressionClasses
 public:
 	using Id = unsigned;
 	using Ids = std::vector<Id>;
-
-	struct Expression
-	{
-		Id id;
-		AssemblyItem const* item = nullptr;
-		Ids arguments;
-		/// Storage modification sequence, only used for storage and memory operations.
-		unsigned sequenceNumber = 0;
-		/// Behaves as if this was a tuple of (item->type(), item->data(), arguments, sequenceNumber).
-		bool operator==(Expression const& _other) const;
-
-		struct ExpressionHash
-		{
-			std::size_t operator()(Expression const& _expression) const;
-		};
-	};
-
 
 	/// Retrieves the id of the expression equivalence class resulting from the given item applied to the
 	/// given classes, might also create a new one.
@@ -128,7 +127,7 @@ private:
 	/// Expression equivalence class representatives - we only store one item of an equivalence.
 	std::vector<Expression> m_representatives;
 	/// All expression ever encountered.
-	std::unordered_set<Expression, Expression::ExpressionHash> m_expressions;
+	util::unordered_flat_set<Expression, ExpressionHash> m_expressions;
 	std::vector<std::shared_ptr<AssemblyItem>> m_spareAssemblyItems;
 };
 
