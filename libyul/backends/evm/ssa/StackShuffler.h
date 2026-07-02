@@ -421,18 +421,7 @@ private:
 			return {StackShufflerResult::Status::Continue};
 
 		// if we couldn't shrink the stack we surface this failed state as stack too deep
-		for (StackOffset const offset: _state.stackRange() | ranges::views::reverse)
-		{
-			Slot const& candidate = _stack[offset];
-			if (
-				candidate.isValue() &&
-				!candidate.isLiteralValue() &&
-				!_state.slotIsSpilled(candidate)
-			)
-				return {StackShufflerResult::Status::StackTooDeep, validatedSpillingCandidate(candidate, _state)};
-		}
-
-		yulAssert(false, "reached final and forbidden state");
+		return {StackShufflerResult::Status::StackTooDeep, validatedSpillingCandidate(_stack.top(), _state)};
 	}
 
 	/// Select an optimal slot to dup based on liveness analysis.
