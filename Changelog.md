@@ -10,6 +10,9 @@ Bugfixes:
 * Code Generator: Fix ICE on parenthesized custom error construction in require statement.
 * Commandline Interface: Report proper error instead of ICE on non-hex mixed-case address value given via `--libraries`.
 
+Build System:
+* Update minimum version requirement of Boost to 1.83.0 for Windows build. This matches the minimum version for other systems.
+
 
 ### 0.8.36 (2026-07-09)
 
