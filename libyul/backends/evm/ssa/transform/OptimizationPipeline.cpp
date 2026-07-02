@@ -18,6 +18,7 @@
 
 #include <libyul/backends/evm/ssa/transform/OptimizationPipeline.h>
 
+#include <libyul/backends/evm/ssa/transform/ConstantConditionFolder.h>
 #include <libyul/backends/evm/ssa/transform/IdentityAndNopRemover.h>
 #include <libyul/backends/evm/ssa/transform/Outliner.h>
 #include <libyul/backends/evm/ssa/transform/TrivialPhiEliminator.h>
@@ -31,9 +32,15 @@ void transform::optimize(ControlFlowGraphs& _cfgs)
 {
 	for (auto& cfg: _cfgs.functionGraphs)
 	{
-		transform::cleanUnreachableBlocks(*cfg);
-		transform::eliminateTrivialPhis(*cfg);
-		transform::removeIdentitiesAndNops(*cfg);
+		{
+			LivenessAnalysis const liveness(*cfg);
+			transform::foldConstantConditions(*cfg, liveness);
+			transform::cleanUnreachableBlocks(*cfg);
+		}
+		{
+			transform::eliminateTrivialPhis(*cfg);
+			transform::removeIdentitiesAndNops(*cfg);
+		}
 	}
 	// transform::runOutliner(_cfgs);
 }
