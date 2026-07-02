@@ -164,9 +164,9 @@ object "C" {
 // ===== spill info =====
 // CFG[0] <main>
 //   spilled:
-//     v4 (value) -> mem 0x80
+//     v35 (value) -> mem 0x80
 //   mstore schedule:
-//     mstore addr(v4) <- v4 (B#0)
+//     mstore addr(v35) <- v35 (B#0)
 // CFG[1] f
 //   spilled:
 //     v0 (value) -> mem 0xa0

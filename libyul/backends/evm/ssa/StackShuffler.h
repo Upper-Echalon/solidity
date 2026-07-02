@@ -578,7 +578,7 @@ private:
 				if (shrinkStack(_stack, _state))
 					return {ShuffleHelperResult::Status::StackModified};
 
-				return {ShuffleHelperResult::Status::StackTooDeep, validatedCulprit(_stack.slot(*depth), _state)};
+				return {ShuffleHelperResult::Status::StackTooDeep, validatedCulprit(_stack.top(), _state)};
 			}
 		}
 		return {ShuffleHelperResult::Status::NoAction};
