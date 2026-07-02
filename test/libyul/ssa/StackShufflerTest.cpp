@@ -602,7 +602,7 @@ explicitly provided.)";
 		oss << "Status: Admissible\n";
 		break;
 	case StackShufflerResult::Status::StackTooDeep:
-		oss << fmt::format("Status: StackTooDeep (culprit: {})\n", table.render(shuffleResult.culprit));
+		oss << fmt::format("Status: StackTooDeep (culprit: {})\n", table.render(shuffleResult.spillingCandidate));
 		break;
 	case StackShufflerResult::Status::MaxIterationsReached:
 		oss << "Status: MaxIterationsReached\n";
