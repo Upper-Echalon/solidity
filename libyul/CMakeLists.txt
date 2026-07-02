@@ -123,6 +123,8 @@ add_library(yul
 	backends/evm/ssa/transform/ConstantConditionFolder.h
 	backends/evm/ssa/transform/IdentityAndNopRemover.cpp
 	backends/evm/ssa/transform/IdentityAndNopRemover.h
+	backends/evm/ssa/transform/JumpThreader.cpp
+	backends/evm/ssa/transform/JumpThreader.h
 	backends/evm/ssa/transform/OptimizationPipeline.cpp
 	backends/evm/ssa/transform/OptimizationPipeline.h
 	backends/evm/ssa/transform/Outliner.cpp

@@ -20,6 +20,7 @@
 
 #include <libyul/backends/evm/ssa/transform/ConstantConditionFolder.h>
 #include <libyul/backends/evm/ssa/transform/IdentityAndNopRemover.h>
+#include <libyul/backends/evm/ssa/transform/JumpThreader.h>
 #include <libyul/backends/evm/ssa/transform/Outliner.h>
 #include <libyul/backends/evm/ssa/transform/TrivialPhiEliminator.h>
 #include <libyul/backends/evm/ssa/transform/UnreachableBlockCleaner.h>
@@ -40,6 +41,10 @@ void transform::optimize(ControlFlowGraphs& _cfgs)
 		{
 			transform::eliminateTrivialPhis(*cfg);
 			transform::removeIdentitiesAndNops(*cfg);
+		}
+		{
+			transform::threadJumps(*cfg);
+			transform::cleanUnreachableBlocks(*cfg);
 		}
 	}
 	// transform::runOutliner(_cfgs);
