@@ -31,7 +31,7 @@
 // Block0_0 -> Block0_0Exit [arrowhead=none];
 // Block0_0Exit [label="Jump" shape=oval];
 // Block0_0Exit -> Block0_1 [style="solid"];
-// Block0_1 [fillcolor="#FF746C", style=filled, label="\
+// Block0_1 [label="\
 // Block 1; (1, max 24)\nLiveIn: phi2[3]\l\
 // LiveOut: phi2[1]\l\nUsed: phi2[2]\l\nphi2 := φ(\l\
 // 	Block 0 => 0x00,\l\
