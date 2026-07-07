@@ -273,11 +273,9 @@ void StackLayoutGenerator::visitBlock(SSACFG::BlockId const& _blockId)
 	StackType stack(currentStackData, {});
 	bool const junkCanBeAdded = m_junkAdmittingBlocksFinder->allowsAdditionOfJunk(_blockId);
 
-	auto const& operationsLiveOut = m_liveness.operationsLiveOut(_blockId);
-	blockLayout.operationIn.reserve(operationsLiveOut.size());
-	std::size_t operationIndex = 0;
+	blockLayout.operationIn.reserve(block.instructions.size());
 	m_cfg.forEachOperation(block, [&](InstId const _instId, SSACFG::Inst const& _inst) {
-		auto opLiveOutWithoutOutputs = operationsLiveOut[operationIndex];
+		auto opLiveOutWithoutOutputs = m_liveness.operationLiveOut(_instId);
 		m_cfg.forEachOutput(_instId, [&](InstId const id) { opLiveOutWithoutOutputs.erase(id); });
 
 		std::vector<Slot> requiredStackTop;
@@ -322,9 +320,7 @@ void StackLayoutGenerator::visitBlock(SSACFG::BlockId const& _blockId)
 		m_cfg.forEachOutput(_instId, [&](InstId const id) {
 			stack.push<false>(Slot::makeValue(m_cfg, id));
 		});
-		++operationIndex;
 	});
-	yulAssert(operationIndex == operationsLiveOut.size());
 
 	// we don't explicitly visit backedges and might have to spill here, too
 	auto const validateBackEdge = [&](SSACFG::BlockId const& _target) {
