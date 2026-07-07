@@ -314,8 +314,6 @@ evmc::Result EVMHost::call(evmc_message const& _message) noexcept
 		}
 	}
 
-	solAssert(message.kind != EVMC_EOFCREATE);
-
 	if (message.kind == EVMC_CREATE)
 	{
 		// TODO is the nonce incremented on failure, too?
@@ -1380,9 +1378,6 @@ void EVMHostPrinter::callRecords()
 				return "CREATE";
 			case evmc_call_kind::EVMC_CREATE2:
 				return "CREATE2";
-			case evmc_call_kind::EVMC_EOFCREATE:
-				solAssert(false); // EOF is not supported.
-				return "";
 		}
 		unreachable();
 	};
