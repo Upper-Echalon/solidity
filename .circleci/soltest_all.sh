@@ -41,6 +41,7 @@ DEFAULT_EVM_VALUES=(
     shanghai
     cancun
     osaka
+    amsterdam
     @future
 )
 EVMS_WITH_EOF=(osaka @future)
