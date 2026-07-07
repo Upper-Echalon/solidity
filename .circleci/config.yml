@@ -13,20 +13,20 @@ parameters:
     default: "ghcr.io/argotorg/solidity-buildpack-deps@sha256:1f387a77be889f65a2a25986a5c5eccc88cec23fabe6aeaf351790751145c81e"
   ubuntu-2404-docker-image:
     type: string
-    # ghcr.io/argotorg/solidity-buildpack-deps:ubuntu2404-7
-    default: "ghcr.io/argotorg/solidity-buildpack-deps@sha256:e52bd8fbb38908f203c6866e39562548faf26e5b7a5174f9860b44aae2b8f0cd"
+    # ghcr.io/argotorg/solidity-buildpack-deps:ubuntu2404-8
+    default: "ghcr.io/argotorg/solidity-buildpack-deps@sha256:2a8487a3f031000004dda3f16ac82115dd29f91b2dc91ff4f47cd6156ce5786c"
   ubuntu-2404-arm-docker-image:
     type: string
-    # ghcr.io/argotorg/solidity-buildpack-deps:ubuntu2404.arm-3
-    default: "ghcr.io/argotorg/solidity-buildpack-deps@sha256:1e6dbf9a9173f2645449281a1e11918a95ca6dc04e59aa9d70824cffc44697ed"
+    # ghcr.io/argotorg/solidity-buildpack-deps:ubuntu2404.arm-4
+    default: "ghcr.io/argotorg/solidity-buildpack-deps@sha256:68c1a86e0ff47c53a2bef9f6a3674ddea7d243a6c0a34f35d9d6321984364dfb"
   ubuntu-2404-clang-docker-image:
     type: string
-    # ghcr.io/argotorg/solidity-buildpack-deps:ubuntu2404.clang-8
-    default: "ghcr.io/argotorg/solidity-buildpack-deps@sha256:e283c8ec6a59c76565c89b856d8019af2fa5beb96f27d3064fc4dda42bf3524d"
+    # ghcr.io/argotorg/solidity-buildpack-deps:ubuntu2404.clang-9
+    default: "ghcr.io/argotorg/solidity-buildpack-deps@sha256:546ff9b0826388e6b0d7c1122826dd9161bd373ca546676f801bccf9a1f38857"
   ubuntu-clang-ossfuzz-docker-image:
     type: string
-    # ghcr.io/argotorg/solidity-buildpack-deps:ubuntu.clang.ossfuzz-13
-    default: "ghcr.io/argotorg/solidity-buildpack-deps@sha256:2acb5d6f254ece25a96096f26960b5fe114eb86ceca92312cd20d59c096bf6e4"
+    # ghcr.io/argotorg/solidity-buildpack-deps:ubuntu.clang.ossfuzz-14
+    default: "ghcr.io/argotorg/solidity-buildpack-deps@sha256:140333dd6c939c8129239506b78fb2f2bf79bd8cc0574ca16b0916415abbcc9d"
   emscripten-docker-image:
     type: string
     # NOTE: Please remember to update the `scripts/build_emscripten.sh` whenever the hash of this image changes.
