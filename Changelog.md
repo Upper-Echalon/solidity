@@ -3,6 +3,7 @@
 Language Features:
 
 Compiler Features:
+* EVM: Support for the EVM version "Amsterdam".
 * Commandline Interface: `--optimize-runs` now also accepts values from the interval [INT64_MAX, UINT64_MAX].
 * General: Speed up SHA-256 hashing (`picosha2`).
 * General: Remove support for the experimental EOF (EVM Object Format) backend.
