@@ -1,6 +1,7 @@
 ### 0.8.36 (unreleased)
 
 Important Bugfixes:
+* PostTypeContractLevelChecker: Fix unintentional reversal of `linearizedBaseContracts` annotation when emitting the warning about the base slot of storage layout being too close to the end of storage. The reversal would affect analysis and code generation dependent on the inheritance order.
 * Yul Optimizer: Fix call graph cycle detection failing to classify some mutually recursive functions as recursive.
 
 Language Features:
