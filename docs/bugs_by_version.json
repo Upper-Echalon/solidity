@@ -2117,6 +2117,10 @@
         ],
         "released": "2026-04-29"
     },
+    "0.8.36": {
+        "bugs": [],
+        "released": "2026-07-09"
+    },
     "0.8.4": {
         "bugs": [
             "UnsoundSpillInMutualRecursion",
