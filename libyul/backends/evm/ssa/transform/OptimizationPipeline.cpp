@@ -34,8 +34,7 @@ void transform::optimize(ControlFlowGraphs& _cfgs)
 	for (auto& cfg: _cfgs.functionGraphs)
 	{
 		{
-			LivenessAnalysis const liveness(*cfg);
-			transform::foldConstantConditions(*cfg, liveness);
+			transform::foldConstantConditions(*cfg);
 			transform::cleanUnreachableBlocks(*cfg);
 		}
 		{

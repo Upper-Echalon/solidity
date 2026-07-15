@@ -18,7 +18,8 @@
 
 #include <libyul/backends/evm/ssa/transform/ConstantConditionFolder.h>
 
-#include <libyul/backends/evm/ssa/LivenessAnalysis.h>
+#include <libyul/backends/evm/ssa/transform/UseCounts.h>
+
 #include <libyul/backends/evm/ssa/SSACFG.h>
 
 #include <libyul/Exceptions.h>
@@ -58,10 +59,13 @@ std::optional<bool> evaluateCondition(SSACFG const& _cfg, BuiltinHandle const& _
 
 }
 
-void transform::foldConstantConditions(SSACFG& _cfg, LivenessAnalysis const& _liveness)
+void transform::foldConstantConditions(SSACFG& _cfg)
 {
 	std::optional<BuiltinHandle> const equalityHandle = _cfg.evmDialect.equalityFunctionHandle();
 	yulAssert(equalityHandle.has_value());
+	// Snapshot taken before any folding: folding only removes uses, so stale counts over-approximate
+	// and a count of 1 below remains exact (the sole use is this exit's condition read).
+	transform::UseCounts const useCounts(_cfg);
 	for (BlockId const blockId: _cfg.liveBlocks())
 	{
 		auto& block = _cfg.block(blockId);
@@ -94,7 +98,7 @@ void transform::foldConstantConditions(SSACFG& _cfg, LivenessAnalysis const& _li
 		}
 
 		if (_cfg.isOperation(conditionId) && _cfg.inst(conditionId).block == blockId)
-			if (_liveness.operationLiveOut(conditionId).count(conditionId) == 1)
+			if (useCounts.hasSingleUse(conditionId))
 				_cfg.replaceWithNop(conditionId);
 	}
 }

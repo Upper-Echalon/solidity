@@ -16,9 +16,16 @@
 */
 // SPDX-License-Identifier: GPL-3.0
 /**
- * Folds conditional jumps with a compile-time-constant condition into unconditional jumps.
+ * Per-InstId use counts..
  */
 #pragma once
+
+#include <libyul/backends/evm/ssa/SSACFGTypes.h>
+
+#include <libyul/Exceptions.h>
+
+#include <cstdint>
+#include <vector>
 
 namespace solidity::yul::ssa
 {
@@ -27,9 +34,27 @@ class SSACFG;
 
 namespace transform
 {
-/// Rewrites every ConditionalJump whose condition is a compile-time constant into an unconditional
-/// Jump to the taken successor and detaches the edge to the dropped successor.
-void foldConstantConditions(SSACFG& _cfg);
+
+/// Determines how often each InstId is read.
+/// A use is an occurrence of the id in another instruction's inputs.
+/// An Upsilon's target phi is a def-site back-link, not a use.
+class UseCounts
+{
+public:
+	explicit UseCounts(SSACFG const& _cfg);
+
+	/// Number of reads of `_id`.
+	std::uint32_t numUses(InstId const _id) const
+	{
+		yulAssert(_id.value < m_counts.size());
+		return m_counts[_id.value];
+	}
+	bool hasSingleUse(InstId const _id) const { return numUses(_id) == 1; }
+
+private:
+	std::vector<std::uint32_t> m_counts;
+};
+
 }
 
 }
