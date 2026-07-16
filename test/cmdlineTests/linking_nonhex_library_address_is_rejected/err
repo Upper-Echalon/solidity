@@ -1,5 +1,1 @@
-Uncaught exception:
-/solidity/libsolutil/CommonData.cpp(139): Throw in function std::string solidity::util::getChecksummedAddress(const std::string &)
-Dynamic exception type:
-std::exception::what: InvalidAddress
-[solidity::util::tag_comment*] = Assertion failed
+Error: Invalid hex value for address for library "L": 0xzzzz0000000000000000000000000000000000aB.
