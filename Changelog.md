@@ -5,6 +5,7 @@ Language Features:
 Compiler Features:
 
 Bugfixes:
+* Commandline Interface: Report proper error instead of ICE on non-hex mixed-case address value given via `--libraries`.
 
 
 ### 0.8.36 (2026-07-09)
