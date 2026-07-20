@@ -3,6 +3,7 @@
 Language Features:
 
 Compiler Features:
+* SMTChecker: Emit a deprecation warning for the BMC engine.
 
 Bugfixes:
 * Commandline Interface: Report proper error instead of ICE on non-hex mixed-case address value given via `--libraries`.
