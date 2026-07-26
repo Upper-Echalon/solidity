@@ -46,11 +46,10 @@ inline bool slotIsSpilled(StackSlot const& _slot, spill::SpillSet const* const _
 
 inline bool slotCanBeLoadedOrPushed(StackSlot const& _slot, spill::SpillSet const* const _spilledVariables)
 {
-	return Stack<>::canBeFreelyGenerated(_slot) || slotIsSpilled(_slot, _spilledVariables);
+	return canBeFreelyGenerated(_slot) || slotIsSpilled(_slot, _spilledVariables);
 }
 
-template<typename Callback>
-void exchange(Stack<Callback>& _stack, StackOffset _off1, StackOffset _off2)
+inline void exchange(Stack& _stack, StackOffset _off1, StackOffset _off2)
 {
 	yulAssert(_stack.isValidSwapTarget(_off1) && _stack.isValidSwapTarget(_off2));
 	auto const topOffset = _stack.depthToOffset(StackDepth{0});
@@ -188,16 +187,17 @@ struct StackShufflerResult
 	StackSlot spillingCandidate = StackSlot::makeJunk();
 };
 
-template<StackManipulationCallbackConcept Callback, std::size_t ReachableStackDepth=16>
 class StackShuffler
 {
 	using Slot = StackSlot;
+
+	static std::size_t constexpr ReachableStackDepth = 16;
 
 public:
 	/// Shuffles the stack toward the target over a fixed spill set. A stack-too-deep state is
 	/// propagated to the caller
 	[[nodiscard]] static StackShufflerResult shuffle(
-		Stack<Callback>& _stack,
+		Stack& _stack,
 		StackData const& _args,
 		StackSlotLiveness const& _liveOut,
 		std::size_t const _targetStackSize,
@@ -232,7 +232,7 @@ public:
 	}
 
 	[[nodiscard]] static StackShufflerResult shuffle(
-		Stack<Callback>& _stack,
+		Stack& _stack,
 		StackData const& _target,
 		spill::SpillSet const* const _spilledVariables = nullptr
 	)
@@ -243,7 +243,7 @@ public:
 	/// Like `shuffle`, but resolves stuck states in place: a recoverable stack-too-deep adds its culprit to
 	/// `_spilledVariables` and continues the same loop, so the spill takes effect without restarting the shuffle.
 	[[nodiscard]] static StackShufflerResult shuffleWithSpillDiscovery(
-		Stack<Callback>& _stack,
+		Stack& _stack,
 		StackData const& _args,
 		StackSlotLiveness const& _liveOut,
 		std::size_t const _targetStackSize,
@@ -281,7 +281,7 @@ public:
 	}
 
 	[[nodiscard]] static StackShufflerResult shuffleWithSpillDiscovery(
-		Stack<Callback>& _stack,
+		Stack& _stack,
 		StackData const& _target,
 		spill::SpillSet& _spilledVariables
 	)
@@ -295,7 +295,7 @@ private:
 	/// Entry preconditions shared by both shuffle variants. Hold for the initial stack only, so they are
 	/// checked once per call rather than on every (potentially partially-shuffled) iteration.
 	static void checkPreconditions(
-		Stack<Callback> const& _stack,
+		Stack const& _stack,
 		StackData const& _args,
 		StackSlotLiveness const& _liveOut,
 		std::size_t const _targetStackSize,
@@ -319,7 +319,7 @@ private:
 	/// A single read-only stepping iteration toward the target. Never mutates the spill set; both shuffle
 	/// loops decide what to do with a returned `StackTooDeep`.
 	[[nodiscard]] static StackShufflerResult runStep(
-		Stack<Callback>& _stack,
+		Stack& _stack,
 		StackData const& _args,
 		StackSlotLiveness const& _liveOut,
 		std::size_t const _targetStackSize,
@@ -357,7 +357,7 @@ private:
 	}
 
 	/// Make a local step in stack space that should bring us closer to the target.
-	static StackShufflerResult shuffleStep(Stack<Callback>& _stack, detail::State const& _state)
+	static StackShufflerResult shuffleStep(Stack& _stack, detail::State const& _state)
 	{
 		// if the stack is too large, we try to shrink it
 		if (_stack.size() > _state.target().size)
@@ -426,7 +426,7 @@ private:
 
 	/// Select an optimal slot to dup based on liveness analysis.
 	/// Prioritizes slots that have the highest deficit with respect to liveOut counts.
-	static std::optional<StackDepth> selectOptimalSlotToDup(Stack<Callback> const& _stack, detail::State const& _state)
+	static std::optional<StackDepth> selectOptimalSlotToDup(Stack const& _stack, detail::State const& _state)
 	{
 		std::optional<StackDepth> bestSlot;
 		int bestDeficit = 0; // Only consider positive deficits
@@ -462,7 +462,7 @@ private:
 	}
 
 	/// Dups the deepest reachable slot in the tail that is required in args
-	static ShuffleHelperResult dupDeepestRelevantTailSlot(Stack<Callback>& _stack, detail::State const& _state)
+	static ShuffleHelperResult dupDeepestRelevantTailSlot(Stack& _stack, detail::State const& _state)
 	{
 		// dup up the deepest slot that is required in args (or compress if unreachable)
 		for (StackOffset offset: _state.stackRange())
@@ -494,7 +494,7 @@ private:
 
 	/// If dupping an ideal slot causes a slot that will still be required to become unreachable, then dup
 	/// the latter slot first
-	static ShuffleHelperResult dupDeepSlotIfRequired(Stack<Callback>& _stack, detail::State const& _state)
+	static ShuffleHelperResult dupDeepSlotIfRequired(Stack& _stack, detail::State const& _state)
 	{
 		// Check if the stack is large enough for anything to potentially become unreachable.
 		if (_stack.size() < ReachableStackDepth - 1)
@@ -574,7 +574,7 @@ private:
 	}
 
 	/// Tries to fix a slot in the args section of the stack
-	static ShuffleHelperResult fixArgsSlot(Stack<Callback>& _stack, detail::State const& _state)
+	static ShuffleHelperResult fixArgsSlot(Stack& _stack, detail::State const& _state)
 	{
 		yulAssert(_stack.size() <= _state.target().size, "this method assumes that the stack isn't too large");
 		if (_stack.size() < _state.target().tailSize)
@@ -843,7 +843,7 @@ private:
 
 	/// Grows the tail if too small, otherwise tries swapping something down from args if its required in tail but not
 	/// there yet.
-	static ShuffleHelperResult fixTailSlot(Stack<Callback>& _stack, detail::State const& _state)
+	static ShuffleHelperResult fixTailSlot(Stack& _stack, detail::State const& _state)
 	{
 		yulAssert(_stack.size() <= _state.target().size, "this method assumes that the stack isn't exceeding target size");
 		for (StackOffset offset: _state.stackArgsRange() | ranges::views::reverse)
@@ -917,7 +917,7 @@ private:
 	}
 
 	/// Tries to compress the stack
-	static bool shrinkStack(Stack<Callback>& _stack, detail::State const& _state)
+	static bool shrinkStack(Stack& _stack, detail::State const& _state)
 	{
 		yulAssert(!_stack.empty(), "Stack is empty, can't shrink");
 
@@ -1029,7 +1029,7 @@ private:
 	/// dup-reachable.
 	/// Returns the culprit slot (guaranteed to be non-junk) that cannot be placed or duplicated, or `std::nullopt`
 	/// if every slot is reachable-or-final.
-	static std::optional<StackSlot> allNecessarySlotsReachableOrFinal(Stack<Callback> const& _stack, detail::State const& _state)
+	static std::optional<StackSlot> allNecessarySlotsReachableOrFinal(Stack const& _stack, detail::State const& _state)
 	{
 		// check that args are either in position or reachable
 		for (StackOffset offset{_state.target().tailSize}; offset < _state.target().size; ++offset.value)
@@ -1090,8 +1090,8 @@ private:
 	spill::SpillSet& _spilledVariables
 )
 {
-	Stack<> stack(_data, {});
-	StackShufflerResult const result = StackShuffler<NoOpStackManipulationCallbacks>::shuffleWithSpillDiscovery(
+	Stack stack(_data);
+	StackShufflerResult const result = StackShuffler::shuffleWithSpillDiscovery(
 		stack, _args, _liveOut, _targetStackSize, _spilledVariables
 	);
 	yulAssert(

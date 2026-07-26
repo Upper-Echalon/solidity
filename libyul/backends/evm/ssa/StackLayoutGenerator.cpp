@@ -69,9 +69,7 @@ void handlePhiFunctions(StackData& _stackData, PhiInverse const& _phiInverse, Li
 	}
 }
 
-using StackType = Stack<>;
-
-void declareJunk(StackType& _stack, LivenessAnalysis::LivenessData const& _live)
+void declareJunk(Stack& _stack, LivenessAnalysis::LivenessData const& _live)
 {
 	for (StackOffset offset{0}; offset < _stack.size(); ++offset.value)
 	{
@@ -189,7 +187,7 @@ void StackLayoutGenerator::defineStackIn(SSACFG::BlockId const& _blockId)
 		yulAssert(stackInProposals.size() == 1);
 		blockLayout.stackIn = stackInProposals[0].second;
 		handlePhiFunctions(blockLayout.stackIn, PhiInverse(m_cfg, stackInProposals[0].first, _blockId), liveIn, m_cfg);
-		StackType stack(blockLayout.stackIn, {});
+		Stack stack(blockLayout.stackIn);
 		declareJunk(stack, liveIn);
 	}
 	else
@@ -201,7 +199,7 @@ void StackLayoutGenerator::defineStackIn(SSACFG::BlockId const& _blockId)
 			proposals[i] = stackInProposals[i].second;
 			handlePhiFunctions(proposals[i], PhiInverse(m_cfg, stackInProposals[i].first, _blockId), liveIn, m_cfg);
 			{
-				StackType stack(proposals[i], {});
+				Stack stack(proposals[i]);
 				declareJunk(stack, liveIn);
 			}
 		}
@@ -216,8 +214,8 @@ void StackLayoutGenerator::defineStackIn(SSACFG::BlockId const& _blockId)
 			{
 				StackData edgeStack = stackInProposals[j].second;
 				ShuffleTrace trace;
-				Stack<TraceRecordingCallbacks> stack(edgeStack, {.trace = &trace});
-				StackShufflerResult const result = StackShuffler<TraceRecordingCallbacks>::shuffleWithSpillDiscovery(
+				Stack stack(edgeStack, &trace);
+				StackShufflerResult const result = StackShuffler::shuffleWithSpillDiscovery(
 					stack,
 					stackPreImage(m_cfg, proposals[i], PhiInverse(m_cfg, stackInProposals[j].first, _blockId)),
 					candidateSpillSet
@@ -272,7 +270,7 @@ void StackLayoutGenerator::visitBlock(SSACFG::BlockId const& _blockId)
 	SSACFG::BasicBlock const& block = m_cfg.block(_blockId);
 
 	StackData currentStackData = blockLayout.stackIn;
-	StackType stack(currentStackData, {});
+	Stack stack(currentStackData);
 	bool const junkCanBeAdded = m_junkAdmittingBlocksFinder->allowsAdditionOfJunk(_blockId);
 
 	blockLayout.operationIn.reserve(block.instructions.size());
@@ -318,9 +316,9 @@ void StackLayoutGenerator::visitBlock(SSACFG::BlockId const& _blockId)
 
 		blockLayout.operationIn.push_back(currentStackData);
 		for (std::size_t i = 0; i < requiredStackTop.size(); ++i)
-			stack.pop<false>();
+			stack.pop();
 		m_cfg.forEachOutput(_instId, [&](InstId const id) {
-			stack.push<false>(Slot::makeValue(m_cfg, id));
+			stack.push(Slot::makeValue(m_cfg, id));
 		});
 	});
 
@@ -377,7 +375,7 @@ void StackLayoutGenerator::visitBlock(SSACFG::BlockId const& _blockId)
 
 				// Pop condition from symbolic stack (consumed by JUMPI).
 				// After this, currentStackData reflects the post-JUMPI stack.
-				stack.pop<false>();
+				stack.pop();
 
 				// Define successor stack-in layouts
 				m_inputStackProposalsPerBlock[_cJump.zero.value].emplace_back(_blockId, currentStackData);

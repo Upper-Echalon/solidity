@@ -97,10 +97,8 @@ private:
 	std::vector<std::uint8_t> m_blockIsTransformed;
 	std::vector<AbstractAssembly::LabelID> m_blockLabels;
 	std::optional<spill::Emitter> m_spillEmitter{std::nullopt};
-	/// Recording buffer for the current shuffle; cleared before every shuffle.
-	ShuffleTrace m_shuffleTrace;
 	StackData m_stackData;
-	Stack<TraceRecordingCallbacks> m_stack;
+	Stack m_stack;
 	std::map<InstId, AbstractAssembly::LabelID> m_returnLabels;
 };
 

@@ -18,12 +18,14 @@
 
 #include <libyul/backends/evm/ssa/ShuffleTrace.h>
 
+#include <libyul/backends/evm/ssa/Stack.h>
+
 namespace solidity::yul::ssa
 {
 
 void apply(StackData& _data, ShuffleOp const& _op)
 {
-	Stack<> stack(_data, {});
+	Stack stack(_data);
 	switch (_op.kind)
 	{
 	case ShuffleOp::Kind::Swap:

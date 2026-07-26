@@ -93,7 +93,6 @@ std::string render(ParsedIdentifierTable const& _table, ShuffleOp const& _op)
 	}
 	solidity::util::unreachable();
 }
-using TestStack = Stack<TraceRecordingCallbacks>;
 
 /// removes leading and trailing whitespace from a string view
 std::string_view trim(std::string_view s)
@@ -153,9 +152,9 @@ Slot parseSlot(ParsedIdentifierTable& _table, std::string_view _token)
 }
 
 /// Parse a string like "[v172, phi109, lit7, JUNK]" into Stack::Data
-TestStack::Data parseSlots(ParsedIdentifierTable& _table, std::string_view _input, char const brackBegin = '[', char const brackEnd = ']')
+StackData parseSlots(ParsedIdentifierTable& _table, std::string_view _input, char const brackBegin = '[', char const brackEnd = ']')
 {
-	TestStack::Data result;
+	StackData result;
 
 	// trim and remove brackets
 	{
@@ -184,7 +183,7 @@ TestStack::Data parseSlots(ParsedIdentifierTable& _table, std::string_view _inpu
 /// Parse liveness like "{phi109, phi150, v172}"
 /// Returns a StackSlotLiveness with reference count 1 for each value, plus the parsed slots
 /// (handy for printing).
-std::pair<StackSlotLiveness, TestStack::Data> parseLiveness(ParsedIdentifierTable& _table, std::string_view _input)
+std::pair<StackSlotLiveness, StackData> parseLiveness(ParsedIdentifierTable& _table, std::string_view _input)
 {
 	auto const slots = parseSlots(_table, _input, '{', '}');
 	StackSlotLiveness::Entries entries;
@@ -199,14 +198,14 @@ std::pair<StackSlotLiveness, TestStack::Data> parseLiveness(ParsedIdentifierTabl
 
 struct ShuffleTestInput
 {
-	std::optional<TestStack::Data> initial;
-	std::optional<TestStack::Data> targetStackTop;
+	std::optional<StackData> initial;
+	std::optional<StackData> targetStackTop;
 	StackSlotLiveness targetStackTailSet{};
-	TestStack::Data targetStackTailSetSlots{};
+	StackData targetStackTailSetSlots{};
 	std::optional<size_t> targetStackSize;
 	bool allowSpilling = false;
 	spill::SpillSet initialSpilledSet{};
-	TestStack::Data initialSpilledSetSlots{};
+	StackData initialSpilledSetSlots{};
 
 	bool valid() const
 	{
@@ -311,8 +310,8 @@ public:
 	TraceRecorder(
 		std::ostream& _out,
 		ParsedIdentifierTable const& _table,
-		TestStack::Data const& _targetArgs,
-		TestStack::Data const& _targetTailSlots,
+		StackData const& _targetArgs,
+		StackData const& _targetTailSlots,
 		size_t _targetStackSize,
 		spill::SpillSet const& _spillSet
 	):
@@ -350,7 +349,7 @@ public:
 		)
 	{}
 
-	void record(std::string const& _operation, TestStack::Data const& _stack)
+	void record(std::string const& _operation, StackData const& _stack)
 	{
 		m_entries.push_back(TraceEntry{_operation, _stack});
 	}
@@ -405,15 +404,15 @@ public:
 private:
 	struct TraceEntry {
 		std::string operation;
-		TestStack::Data stackAfter;
+		StackData stackAfter;
 	};
 
 	std::ostream& m_out;
 	ParsedIdentifierTable const& m_table;
 	std::vector<TraceEntry> m_entries;
 	bool m_truncated = false;
-	TestStack::Data const& m_targetArgs;
-	TestStack::Data const& m_targetTail;
+	StackData const& m_targetArgs;
+	StackData const& m_targetTail;
 	spill::SpillSet const& m_spillSet;
 	size_t const m_targetStackSize;
 	size_t const m_targetTailSize;
@@ -574,8 +573,8 @@ explicitly provided.)";
 	if (testConfig.allowSpilling)
 	{
 		auto scratch = *testConfig.initial;
-		Stack<> stack(scratch, {});
-		shuffleResult = StackShuffler<NoOpStackManipulationCallbacks>::shuffleWithSpillDiscovery(
+		Stack stack(scratch);
+		shuffleResult = StackShuffler::shuffleWithSpillDiscovery(
 			stack,
 			*testConfig.targetStackTop,
 			testConfig.targetStackTailSet,
@@ -590,8 +589,8 @@ explicitly provided.)";
 	// Final shuffle with the (possibly pre-populated) spill set, recording the trace.
 	ShuffleTrace shuffleTrace;
 	{
-		TestStack stack(stackData, {.trace = &shuffleTrace});
-		shuffleResult = StackShuffler<TraceRecordingCallbacks>::shuffle(
+		Stack stack(stackData, &shuffleTrace);
+		shuffleResult = StackShuffler::shuffle(
 			stack,
 			*testConfig.targetStackTop,
 			testConfig.targetStackTailSet,

@@ -178,7 +178,7 @@ CodeTransform::CodeTransform(
 		yulAssert(entryLayout);
 		return entryLayout->stackIn;
 	}()),
-	m_stack(m_stackData, {.trace = &m_shuffleTrace})
+	m_stack(m_stackData)
 {
 	bool const isFunctionGraph = !m_cfg.isMainGraph();
 	if (isFunctionGraph)
@@ -323,7 +323,7 @@ void CodeTransform::operator()(InstId _instId, StackData const& _operationInputL
 		if (returnLabel)
 		{
 			m_assembly.appendLabel(*returnLabel);
-			m_stack.pop<false>();
+			m_stack.pop();
 		}
 		break;
 	}
@@ -355,11 +355,11 @@ void CodeTransform::operator()(InstId _instId, StackData const& _operationInputL
 	}
 	// simulate that the inputs are consumed
 	for (size_t i = 0; i < _inst.inputs.size(); ++i)
-		m_stack.pop<false>();
+		m_stack.pop();
 	// simulate that the outputs are produced
 	auto const numOutputs = m_cfg.numReturnsOf(_instId);
 	for (InstId const id: m_cfg.outputsOf(_instId))
-		m_stack.push<false>(StackSlot::makeValue(m_cfg, id));
+		m_stack.push(StackSlot::makeValue(m_cfg, id));
 
 	// Each output the layout decided to spill gets its `mstore` here
 	if (m_spillEmitter)
@@ -389,8 +389,9 @@ void CodeTransform::spillStore(InstId const _value)
 	// addr(_value) is the slot THIS `mstore` populates, so we have to exclude it from the spill set to
 	// prevent the shuffler from just `mload`ing it back
 	spill::SpillSet const spillSetExcludingSpillee = m_spillSet.without(_value);
-	m_shuffleTrace.clear();
-	auto const shuffleResult = StackShuffler<TraceRecordingCallbacks>::shuffle(m_stack, target, &spillSetExcludingSpillee);
+	ShuffleTrace trace;
+	Stack stack(m_stackData, &trace);
+	auto const shuffleResult = StackShuffler::shuffle(stack, target, &spillSetExcludingSpillee);
 	yulAssert(
 		shuffleResult.status == StackShufflerResult::Status::Admissible,
 		fmt::format(
@@ -400,10 +401,10 @@ void CodeTransform::spillStore(InstId const _value)
 		)
 	);
 	// the `mstore` of the spilled value concludes the def-site trace
-	m_shuffleTrace.push_back(ShuffleOp::store(StackSlot::makeValue(m_cfg, _value)));
-	emit(m_shuffleTrace);
+	trace.push_back(ShuffleOp::store(StackSlot::makeValue(m_cfg, _value)));
+	emit(trace);
 	// `mstore` consumed the value; the address it pushed never persists on the symbolic stack
-	m_stack.pop<false>();
+	m_stack.pop();
 }
 
 void CodeTransform::operator()(SSACFG::BlockId const&, SSACFG::BasicBlock::MainExit const&)
@@ -420,7 +421,7 @@ void CodeTransform::operator()(SSACFG::BlockId const& _currentBlock, SSACFG::Bas
 	// emit JUMPI to nonZero block
 	m_assembly.appendJumpToIf(m_blockLabels[_conditionalJump.nonZero.value]);
 	// update symbolic stack by popping the condition as it'll be consumed by JUMPI
-	m_stack.pop<false>();
+	m_stack.pop();
 
 	{
 		// restore stack to previous state once zero-path is handled
@@ -514,10 +515,11 @@ void CodeTransform::operator()(SSACFG::BlockId const& _blockId, SSACFG::BasicBlo
 
 void CodeTransform::shuffleAndEmit(StackData const& _target, spill::SpillSet const& _spillSet)
 {
-	m_shuffleTrace.clear();
-	auto const shuffleResult = StackShuffler<TraceRecordingCallbacks>::shuffle(m_stack, _target, &_spillSet);
+	ShuffleTrace trace;
+	Stack stack(m_stackData, &trace);
+	auto const shuffleResult = StackShuffler::shuffle(stack, _target, &_spillSet);
 	yulAssert(shuffleResult.status == StackShufflerResult::Status::Admissible);
-	emit(m_shuffleTrace);
+	emit(trace);
 }
 
 void CodeTransform::emit(ShuffleTrace const& _trace)

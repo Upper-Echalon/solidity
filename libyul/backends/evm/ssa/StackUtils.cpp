@@ -120,8 +120,8 @@ OptimalTarget solidity::yul::ssa::findOptimalTarget
 		spillSet = _spillSet;
 		data = _stackData;
 		trace.clear();
-		Stack<TraceRecordingCallbacks> countOpsStack(data, {.trace = &trace});
-		StackShufflerResult const result = StackShuffler<TraceRecordingCallbacks>::shuffleWithSpillDiscovery(
+		Stack countOpsStack(data, &trace);
+		StackShufflerResult const result = StackShuffler::shuffleWithSpillDiscovery(
 			countOpsStack,
 			_targetArgs,
 			_targetLiveOut,

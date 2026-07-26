@@ -18,7 +18,7 @@
 
 #pragma once
 
-#include <libyul/backends/evm/ssa/Stack.h>
+#include <libyul/backends/evm/ssa/StackSlot.h>
 
 #include <fmt/format.h>
 
@@ -64,7 +64,7 @@ struct ShuffleOp
 	static ShuffleOp pop() { return {Kind::Pop, 0, StackSlot::makeJunk()}; }
 	static ShuffleOp push(StackSlot const& _slot)
 	{
-		yulAssert(Stack<>::canBeFreelyGenerated(_slot), "only freely generatable slots can be pushed");
+		yulAssert(canBeFreelyGenerated(_slot), "only freely generatable slots can be pushed");
 		return {Kind::Push, 0, _slot};
 	}
 	static ShuffleOp load(StackSlot const& _slot)
@@ -88,26 +88,6 @@ using ShuffleTrace = std::vector<ShuffleOp>;
 void apply(StackData& _data, ShuffleOp const& _op);
 /// Replays a whole trace on `_data`.
 void replay(StackData& _data, ShuffleTrace const& _trace);
-
-/// Stack manipulation callbacks appending every operation to a `ShuffleTrace`.
-/// A pushed non-literal value slot is recorded as a `Load`: the shuffler only pushes slots that are freely
-/// generatable or spilled, so the slot kind alone discriminates a `Push` from a spill reload.
-struct TraceRecordingCallbacks
-{
-	void swap(StackDepth const _depth) const { trace->push_back(ShuffleOp::swap(_depth)); }
-	void dup(StackDepth const _depth) const { trace->push_back(ShuffleOp::dup(_depth)); }
-	void push(StackSlot const& _slot) const
-	{
-		if (_slot.isValue() && !_slot.isLiteralValue())
-			trace->push_back(ShuffleOp::load(_slot));
-		else
-			trace->push_back(ShuffleOp::push(_slot));
-	}
-	void pop() const { trace->push_back(ShuffleOp::pop()); }
-
-	ShuffleTrace* trace{};
-};
-static_assert(StackManipulationCallbackConcept<TraceRecordingCallbacks>);
 
 }
 
