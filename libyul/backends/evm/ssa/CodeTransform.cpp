@@ -19,6 +19,7 @@
 #include <libyul/backends/evm/ssa/CodeTransform.h>
 
 #include <libyul/backends/evm/ssa/CallGraph.h>
+#include <libyul/backends/evm/ssa/PhiInverse.h>
 #include <libyul/backends/evm/ssa/StackLayoutGenerator.h>
 #include <libyul/backends/evm/ssa/StackShuffler.h>
 #include <libyul/backends/evm/ssa/StackUtils.h>
@@ -217,6 +218,7 @@ void CodeTransform::operator()(SSACFG::BlockId const _blockId)
 	auto const& block = m_cfg.block(_blockId);
 
 	std::size_t operationIndex = 0;
+	yulAssert(blockLayout->operationIn.size() == blockLayout->operationShuffles.size());
 
 	// Iterate every Inst in the block in scheduled order. Only Operations advance codegen;
 	// Phis are otherwise pure stack assertions (already materialized on the block's stackIn).
@@ -229,22 +231,23 @@ void CodeTransform::operator()(SSACFG::BlockId const _blockId)
 		if (inst.isOperation())
 		{
 			yulAssert(operationIndex < blockLayout->operationIn.size());
-			(*this)(instId, blockLayout->operationIn[operationIndex]);
+			(*this)(instId, blockLayout->operationIn[operationIndex], blockLayout->operationShuffles[operationIndex]);
 			++operationIndex;
 		}
 	}
 	yulAssert(operationIndex == blockLayout->operationIn.size());
 
-	// Shuffle to the block's exit layout before dispatching the exit.
+	// Play back the recorded shuffle to the block's exit layout before dispatching the exit.
 	// This ensures the condition is on top for ConditionalJump, phi pre-images are
 	// in the right positions for jumps, and return values are accessible for FunctionReturn.
-	shuffleAndEmit(blockLayout->exitIn, m_spillSet);
+	playback(blockLayout->exitShuffle);
+	assertLayoutCompatibility(m_stack.data(), blockLayout->exitIn);
 
 	// handle the block exit
 	std::visit(solidity::util::GenericVisitor{ [this, &_blockId](auto const& exit) { (*this)(_blockId, exit); } }, block.exit);
 }
 
-void CodeTransform::operator()(InstId _instId, StackData const& _operationInputLayout)
+void CodeTransform::operator()(InstId _instId, StackData const& _operationInputLayout, ShuffleTrace const& _operationShuffle)
 {
 	SSACFG::Inst const& _inst = m_cfg.inst(_instId);
 	yulAssert(_inst.isOperation());
@@ -261,8 +264,8 @@ void CodeTransform::operator()(InstId _instId, StackData const& _operationInputL
 	// check that the assembly stack height corresponds to the stack size before shuffling
 	yulAssert(static_cast<int>(m_stack.size()) == m_assembly.stackHeight());
 
-	// prepare stack for operation
-	shuffleAndEmit(_operationInputLayout, m_spillSet);
+	// prepare stack for operation by playing back the recorded shuffle
+	playback(_operationShuffle);
 
 	// check that the assembly stack height corresponds to the stack size after shuffling
 	yulAssert(static_cast<int>(m_stack.size()) == m_assembly.stackHeight());
@@ -429,10 +432,7 @@ void CodeTransform::operator()(SSACFG::BlockId const& _currentBlock, SSACFG::Bas
 		yulAssert(m_stackLayout[_conditionalJump.zero]);
 
 		// transform stack to a state in which we can jump to the zero branch
-		prepareBlockExitStack(
-			m_stackLayout[_conditionalJump.zero]->stackIn,
-			PhiInverse(m_cfg, _currentBlock, _conditionalJump.zero)
-		);
+		prepareBlockExitStack(_currentBlock, _conditionalJump.zero);
 		assertLayoutCompatibility(m_stack.data(), m_stackLayout[_conditionalJump.zero]->stackIn);
 		m_assembly.appendJumpTo(m_blockLabels[_conditionalJump.zero.value]);
 
@@ -443,10 +443,7 @@ void CodeTransform::operator()(SSACFG::BlockId const& _currentBlock, SSACFG::Bas
 		yulAssert(m_stackLayout[_conditionalJump.nonZero]);
 		m_assembly.setStackHeight(static_cast<int>(m_stack.size()));
 		// transform stack to a state in which we can jump to the nonZero branch
-		prepareBlockExitStack(
-			m_stackLayout[_conditionalJump.nonZero]->stackIn,
-			PhiInverse(m_cfg, _currentBlock, _conditionalJump.nonZero)
-		);
+		prepareBlockExitStack(_currentBlock, _conditionalJump.nonZero);
 		assertLayoutCompatibility(m_stack.data(), m_stackLayout[_conditionalJump.nonZero]->stackIn);
 		if (!m_blockIsTransformed[_conditionalJump.nonZero.value])
 			(*this)(_conditionalJump.nonZero);
@@ -457,7 +454,7 @@ void CodeTransform::operator()(SSACFG::BlockId const& _currentBlock, SSACFG::Bas
 {
 	yulAssert(static_cast<int>(m_stack.size()) == m_assembly.stackHeight());
 	yulAssert(m_stackLayout[_jump.target]);
-	prepareBlockExitStack(m_stackLayout[_jump.target]->stackIn, PhiInverse(m_cfg, _currentBlock, _jump.target));
+	prepareBlockExitStack(_currentBlock, _jump.target);
 	assertLayoutCompatibility(m_stack.data(), m_stackLayout[_jump.target]->stackIn);
 	m_assembly.appendJumpTo(m_blockLabels[_jump.target.value]);
 	if (!m_blockIsTransformed[_jump.target.value])
@@ -513,13 +510,13 @@ void CodeTransform::operator()(SSACFG::BlockId const& _blockId, SSACFG::BasicBlo
 	m_assembly.appendInstruction(evmasm::Instruction::INVALID);
 }
 
-void CodeTransform::shuffleAndEmit(StackData const& _target, spill::SpillSet const& _spillSet)
+void CodeTransform::playback(ShuffleTrace const& _trace)
 {
-	ShuffleTrace trace;
-	Stack stack(m_stackData, &trace);
-	auto const shuffleResult = StackShuffler::shuffle(stack, _target, &_spillSet);
-	yulAssert(shuffleResult.status == StackShufflerResult::Status::Admissible);
-	emit(trace);
+	for (ShuffleOp const& op: _trace)
+	{
+		apply(m_stackData, op);
+		emit(op);
+	}
 }
 
 void CodeTransform::emit(ShuffleTrace const& _trace)
@@ -589,14 +586,16 @@ void CodeTransform::emit(ShuffleOp const& _op)
 	solidity::util::unreachable();
 }
 
-void CodeTransform::prepareBlockExitStack(StackData const& _target, PhiInverse const& _phiInverse)
+void CodeTransform::prepareBlockExitStack(SSACFG::BlockId const& _currentBlock, SSACFG::BlockId const& _target)
 {
+	auto const& targetLayout = m_stackLayout[_target];
+	yulAssert(targetLayout);
 	// pull back target to live in current variable space
-	auto const pulledBackTarget = stackPreImage(m_cfg, _target, _phiInverse);
-	// shuffle to target
-	shuffleAndEmit(pulledBackTarget, m_spillSet);
-	// check that shuffling was successful
+	auto const pulledBackTarget = stackPreImage(m_cfg, targetLayout->stackIn, PhiInverse(m_cfg, _currentBlock, _target));
+	// play back the recorded shuffle for this edge
+	playback(targetLayout->traceForStackIn(_currentBlock));
+	// check that the playback reproduced the edge target
 	assertLayoutCompatibility(m_stack.data(), pulledBackTarget);
 	// now we can simply set the target to the actual one which will take care of the application of phi functions
-	m_stackData = _target;
+	m_stackData = targetLayout->stackIn;
 }

@@ -44,7 +44,17 @@ struct BlockLayout
 	ShuffleTrace exitShuffle;
 	/// Per predecessor edge: transforms the predecessor's post-exit stack (for conditional jumps: after
 	/// popping the condition) into the phi preimage of `stackIn` under that edge
-	std::vector<std::pair<SSACFG::BlockId, ShuffleTrace>> stackInShuffles;
+	std::vector<std::pair<SSACFG::BlockId, ShuffleTrace>> tracesForStackIn;
+
+	/// The recorded shuffle for the edge from `_predecessor` into this block
+	ShuffleTrace const& traceForStackIn(SSACFG::BlockId const& _predecessor) const
+	{
+		for (auto const& [parent, trace]: tracesForStackIn)
+			if (parent == _predecessor)
+				return trace;
+		yulAssert(false, fmt::format("no recorded shuffle for predecessor edge from block {}", _predecessor));
+		solidity::util::unreachable();
+	}
 };
 
 /// For each (reachable) block in the SSACFG one block layout

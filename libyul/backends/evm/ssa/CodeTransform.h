@@ -20,7 +20,6 @@
 
 #include <libyul/backends/evm/ssa/spill/Emitter.h>
 
-#include <libyul/backends/evm/ssa/PhiInverse.h>
 #include <libyul/backends/evm/ssa/ShuffleTrace.h>
 #include <libyul/backends/evm/ssa/Stack.h>
 #include <libyul/backends/evm/ssa/StackLayout.h>
@@ -66,17 +65,17 @@ private:
 	);
 
 	void operator()(SSACFG::BlockId _blockId);
-	void operator()(InstId _instId, StackData const& _operationInputLayout);
+	void operator()(InstId _instId, StackData const& _operationInputLayout, ShuffleTrace const& _operationShuffle);
 	void operator()(SSACFG::BlockId const& _currentBlock, SSACFG::BasicBlock::MainExit const& _mainExit);
 	void operator()(SSACFG::BlockId const& _currentBlock, SSACFG::BasicBlock::ConditionalJump const& _conditionalJump);
 	void operator()(SSACFG::BlockId const& _currentBlock, SSACFG::BasicBlock::Jump const& _jump);
 	void operator()(SSACFG::BlockId const& _currentBlock, SSACFG::BasicBlock::FunctionReturn const& _functionReturn);
 	void operator()(SSACFG::BlockId const& _currentBlock, SSACFG::BasicBlock::Terminated const& _terminated);
 
-	void prepareBlockExitStack(StackData const& _target, PhiInverse const& _phiInverse);
+	void prepareBlockExitStack(SSACFG::BlockId const& _currentBlock, SSACFG::BlockId const& _target);
 
-	/// Shuffles the current stack toward `_target` and emits the recorded trace as assembly.
-	void shuffleAndEmit(StackData const& _target, spill::SpillSet const& _spillSet);
+	/// Plays back a recorded shuffle trace: applies each operation to the symbolic stack and emits its assembly.
+	void playback(ShuffleTrace const& _trace);
 	/// Appends the assembly realizing a single recorded shuffle operation. Does not touch the symbolic stack.
 	void emit(ShuffleOp const& _op);
 	void emit(ShuffleTrace const& _trace);
