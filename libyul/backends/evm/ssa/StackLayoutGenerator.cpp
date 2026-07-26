@@ -20,6 +20,7 @@
 
 #include <libyul/backends/evm/ssa/JunkAdmittingBlocksFinder.h>
 #include <libyul/backends/evm/ssa/PhiInverse.h>
+#include <libyul/backends/evm/ssa/ShuffleTrace.h>
 #include <libyul/backends/evm/ssa/StackShuffler.h>
 #include <libyul/backends/evm/ssa/StackUtils.h>
 
@@ -214,14 +215,15 @@ void StackLayoutGenerator::defineStackIn(SSACFG::BlockId const& _blockId)
 			for (std::size_t j = 0; j < stackInProposals.size(); ++j)
 			{
 				StackData edgeStack = stackInProposals[j].second;
-				Stack<GasAccumulatingCallbacks> stack(edgeStack, {.cfg = m_cfg});
-				StackShufflerResult const result = StackShuffler<GasAccumulatingCallbacks>::shuffleWithSpillDiscovery(
+				ShuffleTrace trace;
+				Stack<TraceRecordingCallbacks> stack(edgeStack, {.trace = &trace});
+				StackShufflerResult const result = StackShuffler<TraceRecordingCallbacks>::shuffleWithSpillDiscovery(
 					stack,
 					stackPreImage(m_cfg, proposals[i], PhiInverse(m_cfg, stackInProposals[j].first, _blockId)),
 					candidateSpillSet
 				);
 				yulAssert(result.status == StackShufflerResult::Status::Admissible);
-				cumulativeGas[i] += stack.callbacks().opGas;
+				cumulativeGas[i] += stackOpsGas(m_cfg, trace);
 			}
 			candidateSpillSets[i] = std::move(candidateSpillSet);
 		}

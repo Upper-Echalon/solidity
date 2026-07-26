@@ -32,48 +32,6 @@
 
 using namespace solidity::yul::ssa;
 
-void GasAccumulatingCallbacks::swap(StackDepth _depth)
-{
-	opGas += evmasm::GasMeter::swapGas(_depth.value, cfg.evmDialect.evmVersion());
-}
-
-void GasAccumulatingCallbacks::dup(StackDepth _depth)
-{
-	opGas += evmasm::GasMeter::dupGas(_depth.value, cfg.evmDialect.evmVersion());
-}
-
-void GasAccumulatingCallbacks::push(StackSlot const& _slot)
-{
-	if (_slot.isLiteralValue())
-	{
-		auto const size = numberEncodingSize(cfg.literalPayload(_slot.value()));
-		opGas += evmasm::GasMeter::runGas(evmasm::pushInstruction(size), cfg.evmDialect.evmVersion());
-	}
-	else if (_slot.isJunk())
-	{
-		auto const op = cfg.evmDialect.evmVersion().hasPush0() ? evmasm::Instruction::PUSH0 : evmasm::Instruction::CODESIZE;
-		opGas += evmasm::GasMeter::runGas(op, cfg.evmDialect.evmVersion());
-	}
-	else if (_slot.isFunctionCallReturnLabel())
-	{
-		// this is a jump dest, we don't really know yet how big it is going to be, just assume that it fits into
-		// a 2-byte number
-		opGas += evmasm::GasMeter::runGas(evmasm::Instruction::PUSH2, cfg.evmDialect.evmVersion());
-	}
-	else
-	{
-		// Spilled SSA value
-		yulAssert(_slot.isValue(), "unexpected slot kind in GasAccumulatingCallbacks::push");
-		opGas += evmasm::GasMeter::runGas(evmasm::Instruction::PUSH32, cfg.evmDialect.evmVersion());
-		opGas += evmasm::GasMeter::runGas(evmasm::Instruction::MLOAD, cfg.evmDialect.evmVersion());
-	}
-}
-
-void GasAccumulatingCallbacks::pop()
-{
-	opGas += evmasm::GasMeter::runGas(evmasm::Instruction::POP, cfg.evmDialect.evmVersion());
-}
-
 std::size_t solidity::yul::ssa::stackOpsGas(SSACFG const& _cfg, ShuffleTrace const& _trace)
 {
 	auto const evmVersion = _cfg.evmDialect.evmVersion();
@@ -156,12 +114,14 @@ OptimalTarget solidity::yul::ssa::findOptimalTarget
 	StackData data;
 	data.reserve(startSize + maxUpwardExpansion);
 	spill::SpillSet spillSet;
+	ShuffleTrace trace;
 	auto const evaluateCost = [&](std::size_t const _targetSize) -> std::size_t
 	{
 		spillSet = _spillSet;
 		data = _stackData;
-		Stack<OpsCountingCallbacks> countOpsStack(data, {});
-		StackShufflerResult const result = StackShuffler<OpsCountingCallbacks>::shuffleWithSpillDiscovery(
+		trace.clear();
+		Stack<TraceRecordingCallbacks> countOpsStack(data, {.trace = &trace});
+		StackShufflerResult const result = StackShuffler<TraceRecordingCallbacks>::shuffleWithSpillDiscovery(
 			countOpsStack,
 			_targetArgs,
 			_targetLiveOut,
@@ -170,7 +130,7 @@ OptimalTarget solidity::yul::ssa::findOptimalTarget
 		);
 		yulAssert(data.size() == _targetSize);
 		yulAssert(result.status == StackShufflerResult::Status::Admissible);
-		std::size_t const cost = countOpsStack.callbacks().numOps + 1000 * spillSet.numSpilled();
+		std::size_t const cost = trace.size() + 1000 * spillSet.numSpilled();
 		return cost;
 	};
 
