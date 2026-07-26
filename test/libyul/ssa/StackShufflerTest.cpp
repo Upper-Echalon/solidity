@@ -20,6 +20,7 @@
 
 #include <libyul/backends/evm/ssa/InstructionStore.h>
 #include <libyul/backends/evm/ssa/SSACFG.h>
+#include <libyul/backends/evm/ssa/ShuffleTrace.h>
 #include <libyul/backends/evm/ssa/Stack.h>
 #include <libyul/backends/evm/ssa/StackShuffler.h>
 #include <libyul/backends/evm/ssa/StackSlotLiveness.h>
@@ -30,7 +31,6 @@
 
 #include <algorithm>
 #include <cstddef>
-#include <functional>
 #include <memory>
 #include <optional>
 #include <ostream>
@@ -73,17 +73,27 @@ struct ParsedIdentifierTable
 	}
 };
 
-struct StackManipulationCallbacks
+/// Renders a recorded operation like the corresponding EVM instruction, with slots rendered through the
+/// identifier table. A spill reload renders as a plain PUSH, matching the assembly's single push-like materialization of a slot.
+std::string render(ParsedIdentifierTable const& _table, ShuffleOp const& _op)
 {
-	void swap(StackDepth _depth) const { hook(fmt::format("SWAP{}", _depth.value)); }
-	void dup(StackDepth const _depth) const { hook(fmt::format("DUP{}", _depth.value)); }
-	void push(Slot const& _slot) const { hook(fmt::format("PUSH {}", table.render(_slot))); }
-	void pop() const { hook("POP"); }
-
-	ParsedIdentifierTable const& table;
-	std::function<void(std::string const&)> hook;
-};
-using TestStack = Stack<StackManipulationCallbacks>;
+	switch (_op.kind)
+	{
+	case ShuffleOp::Kind::Swap:
+		return fmt::format("SWAP{}", _op.depth);
+	case ShuffleOp::Kind::Dup:
+		return fmt::format("DUP{}", _op.depth);
+	case ShuffleOp::Kind::Pop:
+		return "POP";
+	case ShuffleOp::Kind::Push:
+	case ShuffleOp::Kind::Load:
+		return fmt::format("PUSH {}", _table.render(_op.slot));
+	case ShuffleOp::Kind::Store:
+		return fmt::format("STORE {}", _table.render(_op.slot));
+	}
+	solidity::util::unreachable();
+}
+using TestStack = Stack<TraceRecordingCallbacks>;
 
 /// removes leading and trailing whitespace from a string view
 std::string_view trim(std::string_view s)
@@ -578,20 +588,29 @@ explicitly provided.)";
 	}
 
 	// Final shuffle with the (possibly pre-populated) spill set, recording the trace.
+	ShuffleTrace shuffleTrace;
 	{
-		TraceRecorder trace(oss, table, *testConfig.targetStackTop, testConfig.targetStackTailSetSlots, *testConfig.targetStackSize, spillSet);
-		trace.record("(initial)", *testConfig.initial);
-		TestStack stack(stackData, {.table = table, .hook = [&](std::string const& op)
-		{
-			trace.record(op, stackData);
-		}});
-		shuffleResult = StackShuffler<StackManipulationCallbacks>::shuffle(
+		TestStack stack(stackData, {.trace = &shuffleTrace});
+		shuffleResult = StackShuffler<TraceRecordingCallbacks>::shuffle(
 			stack,
 			*testConfig.targetStackTop,
 			testConfig.targetStackTailSet,
 			*testConfig.targetStackSize,
 			&spillSet
 		);
+	}
+
+	// Reconstruct the intermediate stack states by replaying the trace on top of the initial stack.
+	{
+		TraceRecorder trace(oss, table, *testConfig.targetStackTop, testConfig.targetStackTailSetSlots, *testConfig.targetStackSize, spillSet);
+		trace.record("(initial)", *testConfig.initial);
+		StackData replayData = *testConfig.initial;
+		for (ShuffleOp const& op: shuffleTrace)
+		{
+			apply(replayData, op);
+			trace.record(render(table, op), replayData);
+		}
+		yulAssert(replayData == stackData, "replayed trace must reproduce the shuffled stack");
 		if (shuffleResult.status == StackShufflerResult::Status::MaxIterationsReached)
 			trace.truncate(30);
 	}
