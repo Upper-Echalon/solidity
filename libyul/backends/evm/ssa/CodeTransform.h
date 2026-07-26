@@ -60,6 +60,7 @@ private:
 		SSACFG const& _cfg,
 		SSACFGStackLayout const& _stackLayout,
 		spill::SpillSet const& _spillSet,
+		spill::SpillStoreTraces const& _spillStoreTraces,
 		ControlFlowGraphs::FunctionGraphID _graphID,
 		spill::MemoryAddressing const& _addressing
 	);
@@ -80,7 +81,8 @@ private:
 	void emit(ShuffleOp const& _op);
 	void emit(ShuffleTrace const& _trace);
 
-	/// If `_value` is spilled, shuffles it to the stack top and stores it into its memory slot
+	/// If `_value` is spilled, plays back its recorded def-site trace, which brings it to the stack top and
+	/// stores it into its memory slot
 	void spillStore(InstId _value);
 
 	AbstractAssembly& m_assembly;
@@ -91,6 +93,7 @@ private:
 	SSACFG const& m_cfg;
 	SSACFGStackLayout const& m_stackLayout;
 	spill::SpillSet const& m_spillSet;
+	spill::SpillStoreTraces const& m_spillStoreTraces;
 	ControlFlowGraphs::FunctionGraphID const m_graphID;
 
 	std::vector<std::uint8_t> m_blockIsTransformed;

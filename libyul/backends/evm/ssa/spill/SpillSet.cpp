@@ -103,8 +103,11 @@ StackData defStackFor(
 
 }
 
-void SpillSet::closeUnderReachabilityConstraints(SSACFG const& _cfg, SSACFGStackLayout const& _layout)
+void SpillSet::closeUnderReachabilityConstraints(SSACFG const& _cfg, SSACFGStackLayout const& _layout, SpillStoreTraces* _storeTraces)
 {
+	if (_storeTraces)
+		_storeTraces->clear();
+
 	// work queue over values that are marked for spillage
 	std::deque<InstId> queue;
 	for (InstId const id: spilledValues())
@@ -116,7 +119,7 @@ void SpillSet::closeUnderReachabilityConstraints(SSACFG const& _cfg, SSACFGStack
 		queue.pop_front();
 
 		StackData const defStack = defStackFor(_cfg, _layout, value);
-		ensureDefSiteFeasible(_cfg, value, defStack, queue);
+		ensureDefSiteFeasible(_cfg, value, defStack, queue, _storeTraces);
 	}
 }
 
@@ -124,20 +127,23 @@ void SpillSet::ensureDefSiteFeasible(
 	SSACFG const& _cfg,
 	InstId const _value,
 	StackData const& _defStack,
-	std::deque<InstId>& _workQueue)
+	std::deque<InstId>& _workQueue,
+	SpillStoreTraces* _storeTraces)
 {
 	// predicate = spill set minus the owner; the shuffle accumulates discovered culprits here.
 	SpillSet spillSetWithoutOwner = without(_value);
+	StackSlot const valueSlot = StackSlot::makeValue(_cfg, _value);
 	// [... defStack ..., valueSlot]
 	StackData const target = [&]{
 		StackData result;
 		result.reserve(_defStack.size() + 1);
 		result.insert(result.end(), _defStack.begin(), _defStack.end());
-		result.push_back(StackSlot::makeValue(_cfg, _value));
+		result.push_back(valueSlot);
 		return result;
 	}();
 	StackData workStack = _defStack;
-	StackShufflerResult const result = shuffleWithSpillDiscovery(workStack, target, spillSetWithoutOwner);
+	ShuffleTrace storeTrace;
+	StackShufflerResult const result = shuffleWithSpillDiscovery(workStack, target, spillSetWithoutOwner, &storeTrace);
 	yulAssert(
 		result.status == StackShufflerResult::Status::Admissible,
 		fmt::format("def-site store for {} infeasible even after spilling siblings (status={})", _value, static_cast<int>(result.status))
@@ -147,6 +153,13 @@ void SpillSet::ensureDefSiteFeasible(
 	// - if `_value` is unreachable, there are > reachable stack depth distinct slots strictly above it and the
 	//   shuffler heuristics should not pick anything that is already too deep as culprit
 	yulAssert(!spillSetWithoutOwner.isSpilled(_value), "spill-aware shuffle reported the owner as its own blocker");
+
+	if (_storeTraces)
+	{
+		// the `mstore` consuming the value from the top concludes the def-site trace
+		storeTrace.push_back(ShuffleOp::store(valueSlot));
+		(*_storeTraces)[_value] = std::move(storeTrace);
+	}
 
 	for (InstId const culprit: spillSetWithoutOwner.spilledValues())
 	{

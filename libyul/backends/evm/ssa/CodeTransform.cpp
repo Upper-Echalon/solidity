@@ -21,7 +21,6 @@
 #include <libyul/backends/evm/ssa/CallGraph.h>
 #include <libyul/backends/evm/ssa/PhiInverse.h>
 #include <libyul/backends/evm/ssa/StackLayoutGenerator.h>
-#include <libyul/backends/evm/ssa/StackShuffler.h>
 #include <libyul/backends/evm/ssa/StackUtils.h>
 
 #include <libyul/backends/evm/EVMBuiltins.h>
@@ -63,9 +62,11 @@ void CodeTransform::run
 	std::vector<CallSites> callSitesPerCFG;
 	std::vector<SSACFGStackLayout> layouts;
 	std::vector<spill::SpillSet> spillSetsPerCFG;
+	std::vector<spill::SpillStoreTraces> spillStoreTracesPerCFG;
 	callSitesPerCFG.reserve(numCFGs);
 	layouts.reserve(numCFGs);
 	spillSetsPerCFG.reserve(numCFGs);
+	spillStoreTracesPerCFG.reserve(numCFGs);
 
 	for (std::size_t functionIndex = 0; functionIndex < numCFGs; ++functionIndex)
 	{
@@ -77,9 +78,10 @@ void CodeTransform::run
 		auto const graphID = static_cast<ControlFlowGraphs::FunctionGraphID>(functionIndex);
 		callSitesPerCFG.push_back(gatherCallSites(cfg));
 		bool const spillingAllowed = !callGraph.isRecursive(graphID);
-		auto [layout, spillSet] = StackLayoutGenerator::generate(*liveness, callSitesPerCFG.back(), graphID, spillingAllowed);
+		auto [layout, spillSet, spillStoreTraces] = StackLayoutGenerator::generate(*liveness, callSitesPerCFG.back(), graphID, spillingAllowed);
 		layouts.push_back(std::move(layout));
 		spillSetsPerCFG.push_back(std::move(spillSet));
+		spillStoreTracesPerCFG.push_back(std::move(spillStoreTraces));
 	}
 
 	// build up global addressing based on the spill sets
@@ -100,6 +102,7 @@ void CodeTransform::run
 			cfg,
 			layouts[functionIndex],
 			spillSetsPerCFG[functionIndex],
+			spillStoreTracesPerCFG[functionIndex],
 			graphID,
 			addressing
 		);
@@ -148,6 +151,7 @@ CodeTransform::CodeTransform(
 	SSACFG const& _cfg,
 	SSACFGStackLayout const& _stackLayout,
 	spill::SpillSet const& _spillSet,
+	spill::SpillStoreTraces const& _spillStoreTraces,
 	ControlFlowGraphs::FunctionGraphID _graphID,
 	spill::MemoryAddressing const& _addressing
 ):
@@ -159,6 +163,7 @@ CodeTransform::CodeTransform(
 	m_cfg(_cfg),
 	m_stackLayout(_stackLayout),
 	m_spillSet(_spillSet),
+	m_spillStoreTraces(_spillStoreTraces),
 	m_graphID(_graphID),
 	m_blockIsTransformed(_cfg.numBlocks(), false),
 	m_blockLabels([this] {
@@ -386,28 +391,18 @@ void CodeTransform::spillStore(InstId const _value)
 	if (!m_spillEmitter || !m_spillSet.isSpilled(_value))
 		return;
 
-	// Bring `_value` to the stack top so that the `mstore` below consumes it
-	StackData target = m_stack.data();
-	target.push_back(StackSlot::makeValue(m_cfg, _value));
-	// addr(_value) is the slot THIS `mstore` populates, so we have to exclude it from the spill set to
-	// prevent the shuffler from just `mload`ing it back
-	spill::SpillSet const spillSetExcludingSpillee = m_spillSet.without(_value);
-	ShuffleTrace trace;
-	Stack stack(m_stackData, &trace);
-	auto const shuffleResult = StackShuffler::shuffle(stack, target, &spillSetExcludingSpillee);
+	// Play back the recorded def-site trace: it brings `_value` to the stack top and concludes with the
+	// `mstore` consuming it, leaving the rest of the stack in place.
+	auto const it = m_spillStoreTraces.find(_value);
+	yulAssert(it != m_spillStoreTraces.end(), fmt::format("no def-site store trace recorded for spilled value {}", _value));
+	ShuffleTrace const& storeTrace = it->second;
 	yulAssert(
-		shuffleResult.status == StackShufflerResult::Status::Admissible,
-		fmt::format(
-			"shuffler failed to bring spilled value {} to top (status={})",
-			_value,
-			static_cast<int>(shuffleResult.status)
-		)
+		!storeTrace.empty() &&
+		storeTrace.back().kind == ShuffleOp::Kind::Store &&
+		storeTrace.back().slot == StackSlot::makeValue(m_cfg, _value),
+		fmt::format("def-site trace for {} must conclude with its store", _value)
 	);
-	// the `mstore` of the spilled value concludes the def-site trace
-	trace.push_back(ShuffleOp::store(StackSlot::makeValue(m_cfg, _value)));
-	emit(trace);
-	// `mstore` consumed the value; the address it pushed never persists on the symbolic stack
-	m_stack.pop();
+	playback(storeTrace);
 }
 
 void CodeTransform::operator()(SSACFG::BlockId const&, SSACFG::BasicBlock::MainExit const&)
