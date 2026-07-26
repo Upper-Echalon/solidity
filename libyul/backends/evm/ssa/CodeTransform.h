@@ -21,12 +21,11 @@
 #include <libyul/backends/evm/ssa/spill/Emitter.h>
 
 #include <libyul/backends/evm/ssa/PhiInverse.h>
+#include <libyul/backends/evm/ssa/ShuffleTrace.h>
 #include <libyul/backends/evm/ssa/Stack.h>
 #include <libyul/backends/evm/ssa/StackLayout.h>
 
 #include <libyul/backends/evm/AbstractAssembly.h>
-
-#include <libevmasm/Instruction.h>
 
 namespace solidity::yul
 {
@@ -34,72 +33,6 @@ struct BuiltinContext;
 }
 namespace solidity::yul::ssa
 {
-
-struct AssemblyCallbacks
-{
-	void swap(StackDepth const _depth)
-	{
-		assembly->appendInstruction(evmasm::swapInstruction(static_cast<unsigned>(_depth.value)));
-	}
-
-	void pop()
-	{
-		assembly->appendInstruction(evmasm::Instruction::POP);
-	}
-
-	void push(StackSlot const& _slot)
-	{
-		switch (_slot.kind())
-		{
-		case StackSlot::Kind::Value:
-		{
-			auto const id = _slot.value();
-			if (cfg->isLiteral(id))
-			{
-				assembly->appendConstant(cfg->literalPayload(id));
-				return;
-			}
-			if (spillEmitter && spillEmitter->hasAddress(id))
-			{
-				spillEmitter->emitLoad(id);
-				return;
-			}
-			yulAssert(false, fmt::format("Tried bringing up non-spilled non-const {}", id));
-		}
-		case StackSlot::Kind::Junk:
-		{
-			if (assembly->evmVersion().hasPush0())
-				assembly->appendConstant(0);
-			else
-				assembly->appendInstruction(evmasm::Instruction::CODESIZE);
-			return;
-		}
-		case StackSlot::Kind::FunctionCallReturnLabel:
-		{
-			auto const instId = callSites->instId(_slot.functionCallReturnLabel());
-			yulAssert(returnLabels->count(instId), "FunctionCallReturnLabel not pre-registered before shuffle.");
-			assembly->appendLabelReference(returnLabels->at(instId));
-			return;
-		}
-		case StackSlot::Kind::FunctionReturnLabel:
-		{
-			yulAssert(false, "Cannot produce function return label.");
-		}
-		}
-	}
-
-	void dup(StackDepth const _depth)
-	{
-		assembly->appendInstruction(evmasm::dupInstruction(static_cast<unsigned>(_depth.value)));
-	}
-
-	SSACFG const* cfg{};
-	AbstractAssembly* assembly{};
-	CallSites const* callSites{};
-	std::map<InstId, AbstractAssembly::LabelID> const* returnLabels{};
-	spill::Emitter const* spillEmitter{};
-};
-static_assert(StackManipulationCallbackConcept<AssemblyCallbacks>);
 
 class CodeTransform
 {
@@ -142,6 +75,12 @@ private:
 
 	void prepareBlockExitStack(StackData const& _target, PhiInverse const& _phiInverse);
 
+	/// Shuffles the current stack toward `_target` and emits the recorded trace as assembly.
+	void shuffleAndEmit(StackData const& _target, spill::SpillSet const& _spillSet);
+	/// Appends the assembly realizing a single recorded shuffle operation. Does not touch the symbolic stack.
+	void emit(ShuffleOp const& _op);
+	void emit(ShuffleTrace const& _trace);
+
 	/// If `_value` is spilled, shuffles it to the stack top and stores it into its memory slot
 	void spillStore(InstId _value);
 
@@ -158,9 +97,10 @@ private:
 	std::vector<std::uint8_t> m_blockIsTransformed;
 	std::vector<AbstractAssembly::LabelID> m_blockLabels;
 	std::optional<spill::Emitter> m_spillEmitter{std::nullopt};
-	AssemblyCallbacks m_assemblyCallbacks;
+	/// Recording buffer for the current shuffle; cleared before every shuffle.
+	ShuffleTrace m_shuffleTrace;
 	StackData m_stackData;
-	Stack<AssemblyCallbacks> m_stack;
+	Stack<TraceRecordingCallbacks> m_stack;
 	std::map<InstId, AbstractAssembly::LabelID> m_returnLabels;
 };
 

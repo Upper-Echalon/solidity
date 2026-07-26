@@ -25,6 +25,8 @@
 
 #include <libyul/backends/evm/EVMBuiltins.h>
 
+#include <libevmasm/Instruction.h>
+
 #include <libsolutil/Visitor.h>
 
 #include <range/v3/view/take_last.hpp>
@@ -170,20 +172,13 @@ CodeTransform::CodeTransform(
 			return spill::Emitter(_addressing, _graphID, _assembly);
 		return std::nullopt;
 	}()),
-	m_assemblyCallbacks{
-		.cfg = &_cfg,
-		.assembly = &_assembly,
-		.callSites = &_callSites,
-		.returnLabels = &m_returnLabels,
-		.spillEmitter = m_spillEmitter ? &*m_spillEmitter : nullptr
-	},
 	m_stackData([&]
 	{
 		auto const& entryLayout = m_stackLayout[m_cfg.entry];
 		yulAssert(entryLayout);
 		return entryLayout->stackIn;
 	}()),
-	m_stack(m_stackData, m_assemblyCallbacks)
+	m_stack(m_stackData, {.trace = &m_shuffleTrace})
 {
 	bool const isFunctionGraph = !m_cfg.isMainGraph();
 	if (isFunctionGraph)
@@ -243,8 +238,7 @@ void CodeTransform::operator()(SSACFG::BlockId const _blockId)
 	// Shuffle to the block's exit layout before dispatching the exit.
 	// This ensures the condition is on top for ConditionalJump, phi pre-images are
 	// in the right positions for jumps, and return values are accessible for FunctionReturn.
-	auto const shuffleResult = StackShuffler<AssemblyCallbacks>::shuffle(m_stack, blockLayout->exitIn, &m_spillSet);
-	yulAssert(shuffleResult.status == StackShufflerResult::Status::Admissible);
+	shuffleAndEmit(blockLayout->exitIn, m_spillSet);
 
 	// handle the block exit
 	std::visit(solidity::util::GenericVisitor{ [this, &_blockId](auto const& exit) { (*this)(_blockId, exit); } }, block.exit);
@@ -268,10 +262,7 @@ void CodeTransform::operator()(InstId _instId, StackData const& _operationInputL
 	yulAssert(static_cast<int>(m_stack.size()) == m_assembly.stackHeight());
 
 	// prepare stack for operation
-	{
-		auto const shuffleResult = StackShuffler<AssemblyCallbacks>::shuffle(m_stack, _operationInputLayout, &m_spillSet);
-		yulAssert(shuffleResult.status == StackShufflerResult::Status::Admissible);
-	}
+	shuffleAndEmit(_operationInputLayout, m_spillSet);
 
 	// check that the assembly stack height corresponds to the stack size after shuffling
 	yulAssert(static_cast<int>(m_stack.size()) == m_assembly.stackHeight());
@@ -398,7 +389,8 @@ void CodeTransform::spillStore(InstId const _value)
 	// addr(_value) is the slot THIS `mstore` populates, so we have to exclude it from the spill set to
 	// prevent the shuffler from just `mload`ing it back
 	spill::SpillSet const spillSetExcludingSpillee = m_spillSet.without(_value);
-	auto const shuffleResult = StackShuffler<AssemblyCallbacks>::shuffle(m_stack, target, &spillSetExcludingSpillee);
+	m_shuffleTrace.clear();
+	auto const shuffleResult = StackShuffler<TraceRecordingCallbacks>::shuffle(m_stack, target, &spillSetExcludingSpillee);
 	yulAssert(
 		shuffleResult.status == StackShufflerResult::Status::Admissible,
 		fmt::format(
@@ -407,8 +399,9 @@ void CodeTransform::spillStore(InstId const _value)
 			static_cast<int>(shuffleResult.status)
 		)
 	);
-
-	m_spillEmitter->emitStore(_value);
+	// the `mstore` of the spilled value concludes the def-site trace
+	m_shuffleTrace.push_back(ShuffleOp::store(StackSlot::makeValue(m_cfg, _value)));
+	emit(m_shuffleTrace);
 	// `mstore` consumed the value; the address it pushed never persists on the symbolic stack
 	m_stack.pop<false>();
 }
@@ -519,15 +512,87 @@ void CodeTransform::operator()(SSACFG::BlockId const& _blockId, SSACFG::BasicBlo
 	m_assembly.appendInstruction(evmasm::Instruction::INVALID);
 }
 
+void CodeTransform::shuffleAndEmit(StackData const& _target, spill::SpillSet const& _spillSet)
+{
+	m_shuffleTrace.clear();
+	auto const shuffleResult = StackShuffler<TraceRecordingCallbacks>::shuffle(m_stack, _target, &_spillSet);
+	yulAssert(shuffleResult.status == StackShufflerResult::Status::Admissible);
+	emit(m_shuffleTrace);
+}
+
+void CodeTransform::emit(ShuffleTrace const& _trace)
+{
+	for (ShuffleOp const& op: _trace)
+		emit(op);
+}
+
+void CodeTransform::emit(ShuffleOp const& _op)
+{
+	switch (_op.kind)
+	{
+	case ShuffleOp::Kind::Swap:
+		m_assembly.appendInstruction(evmasm::swapInstruction(_op.depth));
+		return;
+	case ShuffleOp::Kind::Dup:
+		m_assembly.appendInstruction(evmasm::dupInstruction(_op.depth));
+		return;
+	case ShuffleOp::Kind::Pop:
+		m_assembly.appendInstruction(evmasm::Instruction::POP);
+		return;
+	case ShuffleOp::Kind::Push:
+		switch (_op.slot.kind())
+		{
+		case StackSlot::Kind::Value:
+			yulAssert(m_cfg.isLiteral(_op.slot.value()), "Non-literal value pushes must be recorded as Load.");
+			m_assembly.appendConstant(m_cfg.literalPayload(_op.slot.value()));
+			return;
+		case StackSlot::Kind::Junk:
+			if (m_assembly.evmVersion().hasPush0())
+				m_assembly.appendConstant(0);
+			else
+				m_assembly.appendInstruction(evmasm::Instruction::CODESIZE);
+			return;
+		case StackSlot::Kind::FunctionCallReturnLabel:
+		{
+			auto const instId = m_callSites.instId(_op.slot.functionCallReturnLabel());
+			yulAssert(m_returnLabels.count(instId), "FunctionCallReturnLabel not pre-registered before shuffle.");
+			m_assembly.appendLabelReference(m_returnLabels.at(instId));
+			return;
+		}
+		case StackSlot::Kind::FunctionReturnLabel:
+			yulAssert(false, "Cannot produce function return label.");
+		}
+		solidity::util::unreachable();
+	case ShuffleOp::Kind::Load:
+	{
+		InstId const id = _op.slot.value();
+		yulAssert(
+			m_spillEmitter && m_spillEmitter->hasAddress(id),
+			fmt::format("Tried bringing up non-spilled non-const {}", id)
+		);
+		m_spillEmitter->emitLoad(id);
+		return;
+	}
+	case ShuffleOp::Kind::Store:
+	{
+		InstId const id = _op.slot.value();
+		yulAssert(
+			m_spillEmitter && m_spillEmitter->hasAddress(id),
+			fmt::format("Tried storing value {} without a spill slot", id)
+		);
+		m_spillEmitter->emitStore(id);
+		return;
+	}
+	}
+	solidity::util::unreachable();
+}
+
 void CodeTransform::prepareBlockExitStack(StackData const& _target, PhiInverse const& _phiInverse)
 {
 	// pull back target to live in current variable space
 	auto const pulledBackTarget = stackPreImage(m_cfg, _target, _phiInverse);
 	// shuffle to target
-	{
-		auto const shuffleResult = StackShuffler<AssemblyCallbacks>::shuffle(m_stack, pulledBackTarget, &m_spillSet);
-		yulAssert(shuffleResult.status == StackShufflerResult::Status::Admissible);
-	}
+	shuffleAndEmit(pulledBackTarget, m_spillSet);
 	// check that shuffling was successful
 	assertLayoutCompatibility(m_stack.data(), pulledBackTarget);
 	// now we can simply set the target to the actual one which will take care of the application of phi functions
