@@ -30,7 +30,8 @@ using namespace solidity::yul::ssa::spill;
 namespace
 {
 
-/// Build the symbolic stack right after `_value`'s operation completes
+/// Build the symbolic stack right after `_value`'s operation completes by replaying the recorded shuffles
+/// and operation effects from the block's `stackIn`
 StackData computeOperationOut(
 	SSACFG const& _cfg,
 	SSACFGStackLayout const& _layout,
@@ -43,35 +44,33 @@ StackData computeOperationOut(
 	auto const& blockLayout = _layout[block];
 	yulAssert(blockLayout, fmt::format("producer {}'s block has no layout", producer));
 
+	StackData opOutStack = blockLayout->stackIn;
 	std::size_t opIndex = 0;
-	bool found = false;
 	for (InstId const id: _cfg.block(block).instructions)
 	{
 		if (!_cfg.isOperation(id))
 			continue;
-		if (id == producer)
-		{
-			found = true;
-			break;
-		}
+		yulAssert(opIndex < blockLayout->operationShuffles.size());
+		replay(opOutStack, blockLayout->operationShuffles[opIndex]);
 		++opIndex;
-	}
-	yulAssert(found, fmt::format("producer {} not found in its block's instructions", producer));
-	yulAssert(opIndex < blockLayout->operationIn.size());
 
-	StackData opOutStack = blockLayout->operationIn[opIndex];
-	SSACFG::Inst const& inst = _cfg.inst(producer);
-	// a call that can continue also consumes its return label, which sits right below the inputs
-	std::size_t consumedSlots = inst.inputs.size();
-	if (inst.opcode == InstOpcode::Call && _cfg.callPayload(producer).canContinue)
-		++consumedSlots;
-	yulAssert(opOutStack.size() >= consumedSlots, "operationIn smaller than consumed slot count");
-	for (std::size_t i = 0; i < consumedSlots; ++i)
-		opOutStack.pop_back();
-	_cfg.forEachOutput(producer, [&](InstId const id) {
-		opOutStack.push_back(StackSlot::makeValue(_cfg, id));
-	});
-	return opOutStack;
+		SSACFG::Inst const& inst = _cfg.inst(id);
+		// a call that can continue also consumes its return label, which sits right below the inputs
+		std::size_t consumedSlots = inst.inputs.size();
+		if (inst.opcode == InstOpcode::Call && _cfg.callPayload(id).canContinue)
+			++consumedSlots;
+		yulAssert(opOutStack.size() >= consumedSlots, "operation input layout smaller than consumed slot count");
+		for (std::size_t i = 0; i < consumedSlots; ++i)
+			opOutStack.pop_back();
+		_cfg.forEachOutput(id, [&](InstId const output) {
+			opOutStack.push_back(StackSlot::makeValue(_cfg, output));
+		});
+
+		if (id == producer)
+			return opOutStack;
+	}
+	yulAssert(false, fmt::format("producer {} not found in its block's instructions", producer));
+	solidity::util::unreachable();
 }
 
 /// The symbolic stack the Emitter faces at `_value`'s definition, where its `mstore` fires. Three cases:

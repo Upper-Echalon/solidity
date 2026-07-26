@@ -278,7 +278,7 @@ void StackLayoutGenerator::visitBlock(SSACFG::BlockId const& _blockId)
 	Stack stack(currentStackData);
 	bool const junkCanBeAdded = m_junkAdmittingBlocksFinder->allowsAdditionOfJunk(_blockId);
 
-	blockLayout.operationIn.reserve(block.instructions.size());
+	blockLayout.operationShuffles.reserve(block.instructions.size());
 	m_cfg.forEachOperation(block, [&](InstId const _instId, SSACFG::Inst const& _inst) {
 		auto opLiveOutWithoutOutputs = m_liveness.operationLiveOut(_instId);
 		m_cfg.forEachOutput(_instId, [&](InstId const id) { opLiveOutWithoutOutputs.erase(id); });
@@ -320,7 +320,6 @@ void StackLayoutGenerator::visitBlock(SSACFG::BlockId const& _blockId)
 			yulAssert(m_spillingAllowed || m_spillSet.numSpilled() == spillCountBefore, "Spilling not allowed, stack too deep.");
 		}
 
-		blockLayout.operationIn.push_back(currentStackData);
 		blockLayout.operationShuffles.push_back(std::move(operationShuffle));
 		for (std::size_t i = 0; i < requiredStackTop.size(); ++i)
 			stack.pop();
@@ -379,9 +378,6 @@ void StackLayoutGenerator::visitBlock(SSACFG::BlockId const& _blockId)
 
 				yulAssert(!stack.empty() && stack.top().isValue() && stack.top().value() == _cJump.condition);
 
-				// exitIn = pre-JUMPI state (condition on top) for CodeTransform
-				blockLayout.exitIn = currentStackData;
-
 				// Pop condition from symbolic stack (consumed by JUMPI).
 				// After this, currentStackData reflects the post-JUMPI stack.
 				stack.pop();
@@ -402,20 +398,14 @@ void StackLayoutGenerator::visitBlock(SSACFG::BlockId const& _blockId)
 				auto const shuffleResult = shuffleWithSpillDiscovery(currentStackData, returnStack, m_spillSet, &blockLayout.exitShuffle);
 				yulAssert(shuffleResult.status == StackShufflerResult::Status::Admissible);
 				yulAssert(m_spillingAllowed || m_spillSet.numSpilled() == spillCountBefore, "Spilling not allowed, stack too deep.");
-				blockLayout.exitIn = currentStackData;
 			},
 			[&](SSACFG::BasicBlock::Jump const& _jump) {
-				blockLayout.exitIn = currentStackData;
 				m_inputStackProposalsPerBlock[_jump.target.value].emplace_back(_blockId, currentStackData);
 
 				validateBackEdge(_jump.target);
 			},
-			[&](SSACFG::BasicBlock::MainExit const&) {
-				blockLayout.exitIn = currentStackData;
-			},
-			[&](SSACFG::BasicBlock::Terminated const&) {
-				blockLayout.exitIn = currentStackData;
-			}
+			[&](SSACFG::BasicBlock::MainExit const&) {},
+			[&](SSACFG::BasicBlock::Terminated const&) {}
 		},
 		block.exit
 	);

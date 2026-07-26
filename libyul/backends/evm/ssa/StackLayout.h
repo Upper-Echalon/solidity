@@ -30,17 +30,17 @@ struct BlockLayout
 {
 	// stack layout required to enter the block
 	StackData stackIn;
-	// stack layout required to execute the i-th operation in the block
-	std::vector<StackData> operationIn;
-	// stack layout required to handle the exit of the block
-	StackData exitIn;
 
-	// Recorded shuffle traces realizing the layouts above. Traces are positional, so they can be replayed on any
-	// stack that is layout-compatible with the one they were recorded on (junk slots acting as wildcards).
+	// Recorded shuffle traces realizing the block's stack states, anchored at `stackIn`. Traces are positional,
+	// so they can be replayed on any stack that is layout-compatible with the one they were recorded on (junk
+	// slots acting as wildcards). Intermediate layouts (operation inputs, the exit state) are reconstructed by
+	// replaying the traces and operation effects from `stackIn`.
 
-	/// Transforms the stack after the (i-1)-th operation (`stackIn` for i = 0) into `operationIn[i]`
+	/// Transforms the stack after the (i-1)-th operation (`stackIn` for i = 0) into the i-th operation's
+	/// input layout
 	std::vector<ShuffleTrace> operationShuffles;
-	/// Transforms the stack after the last operation into `exitIn`
+	/// Transforms the stack after the last operation into the block's exit state (for conditional jumps:
+	/// condition on top, pre-JUMPI)
 	ShuffleTrace exitShuffle;
 	/// Per predecessor edge: transforms the predecessor's post-exit stack (for conditional jumps: after
 	/// popping the condition) into the phi preimage of `stackIn` under that edge

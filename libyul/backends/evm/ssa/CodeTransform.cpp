@@ -223,7 +223,6 @@ void CodeTransform::operator()(SSACFG::BlockId const _blockId)
 	auto const& block = m_cfg.block(_blockId);
 
 	std::size_t operationIndex = 0;
-	yulAssert(blockLayout->operationIn.size() == blockLayout->operationShuffles.size());
 
 	// Iterate every Inst in the block in scheduled order. Only Operations advance codegen;
 	// Phis are otherwise pure stack assertions (already materialized on the block's stackIn).
@@ -235,24 +234,23 @@ void CodeTransform::operator()(SSACFG::BlockId const _blockId)
 			spillStore(instId);
 		if (inst.isOperation())
 		{
-			yulAssert(operationIndex < blockLayout->operationIn.size());
-			(*this)(instId, blockLayout->operationIn[operationIndex], blockLayout->operationShuffles[operationIndex]);
+			yulAssert(operationIndex < blockLayout->operationShuffles.size());
+			(*this)(instId, blockLayout->operationShuffles[operationIndex]);
 			++operationIndex;
 		}
 	}
-	yulAssert(operationIndex == blockLayout->operationIn.size());
+	yulAssert(operationIndex == blockLayout->operationShuffles.size());
 
-	// Play back the recorded shuffle to the block's exit layout before dispatching the exit.
+	// Play back the recorded shuffle to the block's exit state before dispatching the exit.
 	// This ensures the condition is on top for ConditionalJump, phi pre-images are
 	// in the right positions for jumps, and return values are accessible for FunctionReturn.
 	playback(blockLayout->exitShuffle);
-	assertLayoutCompatibility(m_stack.data(), blockLayout->exitIn);
 
 	// handle the block exit
 	std::visit(solidity::util::GenericVisitor{ [this, &_blockId](auto const& exit) { (*this)(_blockId, exit); } }, block.exit);
 }
 
-void CodeTransform::operator()(InstId _instId, StackData const& _operationInputLayout, ShuffleTrace const& _operationShuffle)
+void CodeTransform::operator()(InstId _instId, ShuffleTrace const& _operationShuffle)
 {
 	SSACFG::Inst const& _inst = m_cfg.inst(_instId);
 	yulAssert(_inst.isOperation());
@@ -274,9 +272,6 @@ void CodeTransform::operator()(InstId _instId, StackData const& _operationInputL
 
 	// check that the assembly stack height corresponds to the stack size after shuffling
 	yulAssert(static_cast<int>(m_stack.size()) == m_assembly.stackHeight());
-
-	// check that the stack is compatible with the operation input layout
-	assertLayoutCompatibility(m_stack.data(), _operationInputLayout);
 
 	// Assert that we have the inputs of the operation on stack top.
 	yulAssert(m_stack.size() >= _inst.inputs.size());

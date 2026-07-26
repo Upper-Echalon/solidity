@@ -66,7 +66,7 @@ private:
 	);
 
 	void operator()(SSACFG::BlockId _blockId);
-	void operator()(InstId _instId, StackData const& _operationInputLayout, ShuffleTrace const& _operationShuffle);
+	void operator()(InstId _instId, ShuffleTrace const& _operationShuffle);
 	void operator()(SSACFG::BlockId const& _currentBlock, SSACFG::BasicBlock::MainExit const& _mainExit);
 	void operator()(SSACFG::BlockId const& _currentBlock, SSACFG::BasicBlock::ConditionalJump const& _conditionalJump);
 	void operator()(SSACFG::BlockId const& _currentBlock, SSACFG::BasicBlock::Jump const& _jump);
