@@ -1087,10 +1087,11 @@ private:
 	StackData const& _args,
 	StackSlotLiveness const& _liveOut,
 	std::size_t const _targetStackSize,
-	spill::SpillSet& _spilledVariables
+	spill::SpillSet& _spilledVariables,
+	ShuffleTrace* _trace = nullptr
 )
 {
-	Stack stack(_data);
+	Stack stack(_data, _trace);
 	StackShufflerResult const result = StackShuffler::shuffleWithSpillDiscovery(
 		stack, _args, _liveOut, _targetStackSize, _spilledVariables
 	);
@@ -1104,9 +1105,10 @@ private:
 [[nodiscard]] inline StackShufflerResult shuffleWithSpillDiscovery(
 	StackData& _data,
 	StackData const& _target,
-	spill::SpillSet& _spilledVariables)
+	spill::SpillSet& _spilledVariables,
+	ShuffleTrace* _trace = nullptr)
 {
-	return shuffleWithSpillDiscovery(_data, _target, {}, _target.size(), _spilledVariables);
+	return shuffleWithSpillDiscovery(_data, _target, {}, _target.size(), _spilledVariables, _trace);
 }
 
 

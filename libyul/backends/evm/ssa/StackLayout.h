@@ -18,8 +18,9 @@
 
 #pragma once
 
-#include <libyul/backends/evm/ssa/Stack.h>
+#include <libyul/backends/evm/ssa/ShuffleTrace.h>
 
+#include <utility>
 #include <vector>
 
 namespace solidity::yul::ssa
@@ -33,6 +34,17 @@ struct BlockLayout
 	std::vector<StackData> operationIn;
 	// stack layout required to handle the exit of the block
 	StackData exitIn;
+
+	// Recorded shuffle traces realizing the layouts above. Traces are positional, so they can be replayed on any
+	// stack that is layout-compatible with the one they were recorded on (junk slots acting as wildcards).
+
+	/// Transforms the stack after the (i-1)-th operation (`stackIn` for i = 0) into `operationIn[i]`
+	std::vector<ShuffleTrace> operationShuffles;
+	/// Transforms the stack after the last operation into `exitIn`
+	ShuffleTrace exitShuffle;
+	/// Per predecessor edge: transforms the predecessor's post-exit stack (for conditional jumps: after
+	/// popping the condition) into the phi preimage of `stackIn` under that edge
+	std::vector<std::pair<SSACFG::BlockId, ShuffleTrace>> stackInShuffles;
 };
 
 /// For each (reachable) block in the SSACFG one block layout
