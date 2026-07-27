@@ -173,7 +173,7 @@ void StackLayoutGenerator::defineStackIn(SSACFG::BlockId const& _blockId)
 			for (auto const& arg: m_cfg.arguments | ranges::views::reverse)
 				blockLayout.stackIn.push_back(Slot::makeValue(m_cfg, arg));
 		}
-		m_resultLayout[_blockId] = blockLayout;
+		m_resultLayout[_blockId] = std::move(blockLayout);
 		return;
 	}
 
@@ -260,10 +260,10 @@ void StackLayoutGenerator::defineStackIn(SSACFG::BlockId const& _blockId)
 			m_spillingAllowed || m_spillSet.numSpilled() == spillCountBefore,
 			"Stack too deep, but spilling is disabled because the function is part of a recursive call chain."
 		);
-		blockLayout.tracesForStackIn.emplace_back(parentBlockId, std::move(edgeShuffle));
+		blockLayout.addTraceForStackIn(parentBlockId, std::move(edgeShuffle));
 	}
 
-	m_resultLayout[_blockId] = blockLayout;
+	m_resultLayout[_blockId] = std::move(blockLayout);
 }
 
 void StackLayoutGenerator::visitBlock(SSACFG::BlockId const& _blockId)
@@ -343,7 +343,7 @@ void StackLayoutGenerator::visitBlock(SSACFG::BlockId const& _blockId)
 			m_spillingAllowed || m_spillSet.numSpilled() == spillCountBefore,
 			"Stack too deep, but spilling is disabled because the function is part of a recursive call chain."
 		);
-		m_resultLayout[_target]->tracesForStackIn.emplace_back(_blockId, std::move(edgeShuffle));
+		m_resultLayout[_target]->addTraceForStackIn(_blockId, std::move(edgeShuffle));
 	};
 
 	std::visit(

@@ -79,7 +79,6 @@ private:
 	void playback(ShuffleTrace const& _trace);
 	/// Appends the assembly realizing a single recorded shuffle operation. Does not touch the symbolic stack.
 	void emit(ShuffleOp const& _op);
-	void emit(ShuffleTrace const& _trace);
 
 	/// If `_value` is spilled, plays back its recorded def-site trace, which brings it to the stack top and
 	/// stores it into its memory slot

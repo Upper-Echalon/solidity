@@ -33,7 +33,6 @@ namespace solidity::yul::ssa
 /// manipulation is recorded as a `ShuffleOp`; an untraced view mutates the data silently.
 class Stack
 {
-	static size_t constexpr reachableStackDepth = 16;
 public:
 	using Slot = StackSlot;
 	using Data = StackData;
@@ -115,11 +114,6 @@ public:
 			return std::nullopt;
 
 		return Depth{static_cast<size_t>(std::distance(ranges::begin(rview), it))};
-	}
-
-	static bool constexpr canBeFreelyGenerated(Slot const& _slot)
-	{
-		return ssa::canBeFreelyGenerated(_slot);
 	}
 
 	Slot const& operator[](Offset const& _index) const noexcept { return (*m_data)[_index.value]; }

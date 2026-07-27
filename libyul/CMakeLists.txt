@@ -98,13 +98,13 @@ add_library(yul
 	backends/evm/ssa/SSACFGTypes.h
 	backends/evm/ssa/ShuffleTrace.cpp
 	backends/evm/ssa/ShuffleTrace.h
-	backends/evm/ssa/Stack.cpp
 	backends/evm/ssa/Stack.h
 	backends/evm/ssa/StackLayout.h
 	backends/evm/ssa/StackLayoutGenerator.cpp
 	backends/evm/ssa/StackLayoutGenerator.h
 	backends/evm/ssa/StackShuffler.cpp
 	backends/evm/ssa/StackShuffler.h
+	backends/evm/ssa/StackSlot.cpp
 	backends/evm/ssa/StackSlot.h
 	backends/evm/ssa/StackSlotLiveness.h
 	backends/evm/ssa/util/UseCountSet.h

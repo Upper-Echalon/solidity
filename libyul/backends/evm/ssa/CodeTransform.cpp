@@ -509,12 +509,6 @@ void CodeTransform::playback(ShuffleTrace const& _trace)
 	}
 }
 
-void CodeTransform::emit(ShuffleTrace const& _trace)
-{
-	for (ShuffleOp const& op: _trace)
-		emit(op);
-}
-
 void CodeTransform::emit(ShuffleOp const& _op)
 {
 	switch (_op.kind)

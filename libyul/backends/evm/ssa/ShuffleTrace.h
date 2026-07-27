@@ -32,9 +32,6 @@ namespace solidity::yul::ssa
 /// A single recorded stack manipulation.
 struct ShuffleOp
 {
-	/// Upper bound for the SWAPn / DUPn instruction operand; matches the reachable stack depth of `Stack`.
-	static std::size_t constexpr maxOperandDepth = 16;
-
 	enum class Kind: std::uint8_t
 	{
 		Swap,  ///< swap the top slot with the slot at depth `depth` (SWAP)
@@ -53,12 +50,12 @@ struct ShuffleOp
 
 	static ShuffleOp swap(StackDepth const _depth)
 	{
-		yulAssert(1 <= _depth.value && _depth.value <= maxOperandDepth);
+		yulAssert(1 <= _depth.value && _depth.value <= reachableStackDepth);
 		return {Kind::Swap, static_cast<std::uint8_t>(_depth.value), StackSlot::makeJunk()};
 	}
 	static ShuffleOp dup(StackDepth const _depth)
 	{
-		yulAssert(1 <= _depth.value && _depth.value <= maxOperandDepth);
+		yulAssert(1 <= _depth.value && _depth.value <= reachableStackDepth);
 		return {Kind::Dup, static_cast<std::uint8_t>(_depth.value), StackSlot::makeJunk()};
 	}
 	static ShuffleOp pop() { return {Kind::Pop, 0, StackSlot::makeJunk()}; }

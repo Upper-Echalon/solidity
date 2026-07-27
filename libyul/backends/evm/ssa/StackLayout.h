@@ -31,16 +31,10 @@ struct BlockLayout
 	// stack layout required to enter the block
 	StackData stackIn;
 
-	// Recorded shuffle traces realizing the block's stack states, anchored at `stackIn`. Traces are positional,
-	// so they can be replayed on any stack that is layout-compatible with the one they were recorded on (junk
-	// slots acting as wildcards). Intermediate layouts (operation inputs, the exit state) are reconstructed by
-	// replaying the traces and operation effects from `stackIn`.
-
 	/// Transforms the stack after the (i-1)-th operation (`stackIn` for i = 0) into the i-th operation's
 	/// input layout
 	std::vector<ShuffleTrace> operationShuffles;
-	/// Transforms the stack after the last operation into the block's exit state (for conditional jumps:
-	/// condition on top, pre-JUMPI)
+	/// Transforms the stack after the last operation into the block's exit state (for conditional jumps: condition on top, pre-JUMPI)
 	ShuffleTrace exitShuffle;
 	/// Per predecessor edge: transforms the predecessor's post-exit stack (for conditional jumps: after
 	/// popping the condition) into the phi preimage of `stackIn` under that edge
@@ -54,6 +48,21 @@ struct BlockLayout
 				return trace;
 		yulAssert(false, fmt::format("no recorded shuffle for predecessor edge from block {}", _predecessor));
 		solidity::util::unreachable();
+	}
+
+	/// Records the shuffle for the edge from `_predecessor` into this block
+	void addTraceForStackIn(SSACFG::BlockId const& _predecessor, ShuffleTrace&& _trace)
+	{
+		for (auto const& [parent, trace]: tracesForStackIn)
+			if (parent == _predecessor)
+			{
+				yulAssert(
+					trace == _trace,
+					fmt::format("conflicting shuffles recorded for the predecessor edge from block {}", _predecessor)
+				);
+				return;
+			}
+		tracesForStackIn.emplace_back(_predecessor, std::move(_trace));
 	}
 };
 

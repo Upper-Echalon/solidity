@@ -191,8 +191,6 @@ class StackShuffler
 {
 	using Slot = StackSlot;
 
-	static std::size_t constexpr ReachableStackDepth = 16;
-
 public:
 	/// Shuffles the stack toward the target over a fixed spill set. A stack-too-deep state is
 	/// propagated to the caller
@@ -309,7 +307,7 @@ private:
 		// check that all required values are on stack
 		for (auto const& liveSlot: _liveOut | ranges::views::keys)
 			yulAssert(
-				!_stack.canBeFreelyGenerated(liveSlot) &&
+				!canBeFreelyGenerated(liveSlot) &&
 				(ranges::contains(_stack.data(), liveSlot) || detail::slotIsSpilled(liveSlot, _spilledVariables))
 			);
 		for (auto const& arg: _args)
@@ -327,7 +325,7 @@ private:
 	)
 	{
 		detail::Target const target(_args, _liveOut, _targetStackSize, _spilledVariables);
-		detail::State const state(_stack.data(), target, _spilledVariables, ReachableStackDepth);
+		detail::State const state(_stack.data(), target, _spilledVariables, reachableStackDepth);
 		auto const result = shuffleStep(_stack, state);
 		if (result.status == StackShufflerResult::Status::Admissible)
 			yulAssert(state.admissible());
@@ -497,10 +495,10 @@ private:
 	static ShuffleHelperResult dupDeepSlotIfRequired(Stack& _stack, detail::State const& _state)
 	{
 		// Check if the stack is large enough for anything to potentially become unreachable.
-		if (_stack.size() < ReachableStackDepth - 1)
+		if (_stack.size() < reachableStackDepth - 1)
 			return {ShuffleHelperResult::Status::NoAction};
 		// Check whether any deep slot might still be needed later (i.e. we still need to reach it with a DUP or SWAP).
-		for (StackOffset sourceOffset{0u}; sourceOffset < _stack.size() - (ReachableStackDepth - 1); ++sourceOffset.value)
+		for (StackOffset sourceOffset{0u}; sourceOffset < _stack.size() - (reachableStackDepth - 1); ++sourceOffset.value)
 		{
 			// This slot needs to be moved into args and there is no tail slot of the same kind further up in the stack.
 			auto const& endangeredSlot = _stack[sourceOffset];
@@ -684,7 +682,7 @@ private:
 							(_state.countReachable(_stack[argOffset]) > 1 || _state.slotIsSpilled(_stack[argOffset])) &&  // a reachable copy remains, or the value is spilled and can be reloaded, so moving it is recoverable
 							(  // we only get a strict improvement if
 								!_state.isArgsCompatible(argOffset, argOffset) ||  // either the argOffset isn't in position anyway
-								_stack.offsetToDepth(offset).value == ReachableStackDepth  // or offset is at the swap edge
+								_stack.offsetToDepth(offset).value == reachableStackDepth  // or offset is at the swap edge
 							)
 						)
 						{
@@ -724,7 +722,7 @@ private:
 				return result;
 
 			auto const maybeIncorrectArgSlotDepth = _state.findDeepestIncorrectArgSlot();
-			if (!maybeIncorrectArgSlotDepth || maybeIncorrectArgSlotDepth->value < ReachableStackDepth - 1)
+			if (!maybeIncorrectArgSlotDepth || maybeIncorrectArgSlotDepth->value < reachableStackDepth - 1)
 			{
 				StackOffset const targetOffset{_stack.size()};
 				if (_state.count(_state.targetArg(targetOffset)) < _state.targetMinCount(_state.targetArg(targetOffset)))
@@ -747,7 +745,7 @@ private:
 			// is not on the stack at all. A push/dup grows the stack, pushing that slot one deeper.
 			// So if the deepest incorrect args slot would be pushed out of reach by growing, shrink first to keep it reachable.
 			if (
-				maybeIncorrectArgSlotDepth && maybeIncorrectArgSlotDepth->value > ReachableStackDepth
+				maybeIncorrectArgSlotDepth && maybeIncorrectArgSlotDepth->value > reachableStackDepth
 			)
 			{
 				StackOffset const incorrectOffset{_stack.size() - maybeIncorrectArgSlotDepth->value};
@@ -988,16 +986,16 @@ private:
 				bool const isJunk = slot.isJunk();
 				bool const hasSurplus = _state.count(slot) > _state.targetMinCount(slot);
 				bool const hasReachableDuplicate = _state.countReachable(slot) > 1;
-				bool const canBeFreelyGenerated = _stack.canBeFreelyGenerated(slot);
+				bool const freelyGeneratable = canBeFreelyGenerated(slot);
 				bool const isLit = slot.isLiteralValue();
 
 				if (isJunk && notInPosition)
 					return 5;
-				if (canBeFreelyGenerated && !isLit && notInPosition)
+				if (freelyGeneratable && !isLit && notInPosition)
 					return 4;
 				if (hasSurplus)
 					return 3;
-				if (canBeFreelyGenerated)
+				if (freelyGeneratable)
 					return 2;
 				if (hasReachableDuplicate)
 					return 1;
