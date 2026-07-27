@@ -141,8 +141,7 @@ void SpillSet::ensureDefSiteFeasible(
 		return result;
 	}();
 	StackData workStack = _defStack;
-	ShuffleTrace storeTrace;
-	StackShufflerResult const result = shuffleWithSpillDiscovery(workStack, target, spillSetWithoutOwner, &storeTrace);
+	StackShufflerResult result = shuffleWithSpillDiscovery(workStack, target, spillSetWithoutOwner);
 	yulAssert(
 		result.status == StackShufflerResult::Status::Admissible,
 		fmt::format("def-site store for {} infeasible even after spilling siblings (status={})", _value, static_cast<int>(result.status))
@@ -156,8 +155,8 @@ void SpillSet::ensureDefSiteFeasible(
 	if (_storeTraces)
 	{
 		// the `mstore` consuming the value from the top concludes the def-site trace
-		storeTrace.push_back(ShuffleOp::store(valueSlot));
-		(*_storeTraces)[_value] = std::move(storeTrace);
+		result.trace.push_back(ShuffleOp::store(valueSlot));
+		(*_storeTraces)[_value] = std::move(result.trace);
 	}
 
 	for (InstId const culprit: spillSetWithoutOwner.spilledValues())

@@ -573,9 +573,8 @@ explicitly provided.)";
 	if (testConfig.allowSpilling)
 	{
 		auto scratch = *testConfig.initial;
-		Stack stack(scratch);
 		shuffleResult = StackShuffler::shuffleWithSpillDiscovery(
-			stack,
+			scratch,
 			*testConfig.targetStackTop,
 			testConfig.targetStackTailSet,
 			*testConfig.targetStackSize,
@@ -586,25 +585,21 @@ explicitly provided.)";
 				spilledSlotList.push_back(Slot::makeValue(table.store, value));
 	}
 
-	// Final shuffle with the (possibly pre-populated) spill set, recording the trace.
-	ShuffleTrace shuffleTrace;
-	{
-		Stack stack(stackData, &shuffleTrace);
-		shuffleResult = StackShuffler::shuffle(
-			stack,
-			*testConfig.targetStackTop,
-			testConfig.targetStackTailSet,
-			*testConfig.targetStackSize,
-			&spillSet
-		);
-	}
+	// Final shuffle with the (possibly pre-populated) spill set; the result carries the recorded trace.
+	shuffleResult = StackShuffler::shuffle(
+		stackData,
+		*testConfig.targetStackTop,
+		testConfig.targetStackTailSet,
+		*testConfig.targetStackSize,
+		&spillSet
+	);
 
 	// Reconstruct the intermediate stack states by replaying the trace on top of the initial stack.
 	{
 		TraceRecorder trace(oss, table, *testConfig.targetStackTop, testConfig.targetStackTailSetSlots, *testConfig.targetStackSize, spillSet);
 		trace.record("(initial)", *testConfig.initial);
 		StackData replayData = *testConfig.initial;
-		for (ShuffleOp const& op: shuffleTrace)
+		for (ShuffleOp const& op: shuffleResult.trace)
 		{
 			apply(replayData, op);
 			trace.record(render(table, op), replayData);

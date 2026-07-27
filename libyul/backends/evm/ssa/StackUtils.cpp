@@ -114,15 +114,12 @@ OptimalTarget solidity::yul::ssa::findOptimalTarget
 	StackData data;
 	data.reserve(startSize + maxUpwardExpansion);
 	spill::SpillSet spillSet;
-	ShuffleTrace trace;
 	auto const evaluateCost = [&](std::size_t const _targetSize) -> std::size_t
 	{
 		spillSet = _spillSet;
 		data = _stackData;
-		trace.clear();
-		Stack countOpsStack(data, &trace);
 		StackShufflerResult const result = StackShuffler::shuffleWithSpillDiscovery(
-			countOpsStack,
+			data,
 			_targetArgs,
 			_targetLiveOut,
 			_targetSize,
@@ -130,7 +127,7 @@ OptimalTarget solidity::yul::ssa::findOptimalTarget
 		);
 		yulAssert(data.size() == _targetSize);
 		yulAssert(result.status == StackShufflerResult::Status::Admissible);
-		std::size_t const cost = trace.size() + 1000 * spillSet.numSpilled();
+		std::size_t const cost = result.trace.size() + 1000 * spillSet.numSpilled();
 		return cost;
 	};
 

@@ -185,6 +185,7 @@ struct StackShufflerResult
 	enum class Status { Continue, Admissible, StackTooDeep, MaxIterationsReached };
 	Status status = Status::Admissible;
 	StackSlot spillingCandidate = StackSlot::makeJunk();
+	ShuffleTrace trace{};
 };
 
 class StackShuffler
@@ -192,14 +193,67 @@ class StackShuffler
 	using Slot = StackSlot;
 
 public:
-	/// Shuffles the stack toward the target over a fixed spill set. A stack-too-deep state is
-	/// propagated to the caller
+	/// Shuffles `_data` toward the target over a fixed spill set, returning the trace of stack ops
+	/// realizing the shuffle. A stack-too-deep state is propagated to the caller
 	[[nodiscard]] static StackShufflerResult shuffle(
-		Stack& _stack,
+		StackData& _data,
 		StackData const& _args,
 		StackSlotLiveness const& _liveOut,
 		std::size_t const _targetStackSize,
 		spill::SpillSet const* const _spilledVariables = nullptr
+	)
+	{
+		ShuffleTrace trace;
+		Stack stack(_data, &trace);
+		StackShufflerResult result = shuffleImpl(stack, _args, _liveOut, _targetStackSize, _spilledVariables);
+		result.trace = std::move(trace);
+		return result;
+	}
+
+	[[nodiscard]] static StackShufflerResult shuffle(
+		StackData& _data,
+		StackData const& _target,
+		spill::SpillSet const* const _spilledVariables = nullptr
+	)
+	{
+		return shuffle(_data, _target, {}, _target.size(), _spilledVariables);
+	}
+
+	/// Like `shuffle`, but resolves stuck states in place: a recoverable stack-too-deep adds its culprit to
+	/// `_spilledVariables` and continues the same loop, so the spill takes effect without restarting the shuffle.
+	[[nodiscard]] static StackShufflerResult shuffleWithSpillDiscovery(
+		StackData& _data,
+		StackData const& _args,
+		StackSlotLiveness const& _liveOut,
+		std::size_t const _targetStackSize,
+		spill::SpillSet& _spilledVariables
+	)
+	{
+		ShuffleTrace trace;
+		Stack stack(_data, &trace);
+		StackShufflerResult result = shuffleWithSpillDiscoveryImpl(stack, _args, _liveOut, _targetStackSize, _spilledVariables);
+		result.trace = std::move(trace);
+		return result;
+	}
+
+	[[nodiscard]] static StackShufflerResult shuffleWithSpillDiscovery(
+		StackData& _data,
+		StackData const& _target,
+		spill::SpillSet& _spilledVariables
+	)
+	{
+		return shuffleWithSpillDiscovery(_data, _target, {}, _target.size(), _spilledVariables);
+	}
+
+private:
+	static std::size_t constexpr maxIterations = 1000;
+
+	[[nodiscard]] static StackShufflerResult shuffleImpl(
+		Stack& _stack,
+		StackData const& _args,
+		StackSlotLiveness const& _liveOut,
+		std::size_t const _targetStackSize,
+		spill::SpillSet const* const _spilledVariables
 	)
 	{
 		checkPreconditions(_stack, _args, _liveOut, _targetStackSize, _spilledVariables);
@@ -229,18 +283,7 @@ public:
 		yulAssert(false);
 	}
 
-	[[nodiscard]] static StackShufflerResult shuffle(
-		Stack& _stack,
-		StackData const& _target,
-		spill::SpillSet const* const _spilledVariables = nullptr
-	)
-	{
-		return shuffle(_stack, _target, {}, _target.size(), _spilledVariables);
-	}
-
-	/// Like `shuffle`, but resolves stuck states in place: a recoverable stack-too-deep adds its culprit to
-	/// `_spilledVariables` and continues the same loop, so the spill takes effect without restarting the shuffle.
-	[[nodiscard]] static StackShufflerResult shuffleWithSpillDiscovery(
+	[[nodiscard]] static StackShufflerResult shuffleWithSpillDiscoveryImpl(
 		Stack& _stack,
 		StackData const& _args,
 		StackSlotLiveness const& _liveOut,
@@ -277,18 +320,6 @@ public:
 		}
 		yulAssert(false);
 	}
-
-	[[nodiscard]] static StackShufflerResult shuffleWithSpillDiscovery(
-		Stack& _stack,
-		StackData const& _target,
-		spill::SpillSet& _spilledVariables
-	)
-	{
-		return shuffleWithSpillDiscovery(_stack, _target, {}, _target.size(), _spilledVariables);
-	}
-
-private:
-	static std::size_t constexpr maxIterations = 1000;
 
 	/// Entry preconditions shared by both shuffle variants. Hold for the initial stack only, so they are
 	/// checked once per call rather than on every (potentially partially-shuffled) iteration.
@@ -1085,13 +1116,11 @@ private:
 	StackData const& _args,
 	StackSlotLiveness const& _liveOut,
 	std::size_t const _targetStackSize,
-	spill::SpillSet& _spilledVariables,
-	ShuffleTrace* _trace = nullptr
+	spill::SpillSet& _spilledVariables
 )
 {
-	Stack stack(_data, _trace);
-	StackShufflerResult const result = StackShuffler::shuffleWithSpillDiscovery(
-		stack, _args, _liveOut, _targetStackSize, _spilledVariables
+	StackShufflerResult result = StackShuffler::shuffleWithSpillDiscovery(
+		_data, _args, _liveOut, _targetStackSize, _spilledVariables
 	);
 	yulAssert(
 		result.status == StackShufflerResult::Status::Admissible ||
@@ -1103,10 +1132,9 @@ private:
 [[nodiscard]] inline StackShufflerResult shuffleWithSpillDiscovery(
 	StackData& _data,
 	StackData const& _target,
-	spill::SpillSet& _spilledVariables,
-	ShuffleTrace* _trace = nullptr)
+	spill::SpillSet& _spilledVariables)
 {
-	return shuffleWithSpillDiscovery(_data, _target, {}, _target.size(), _spilledVariables, _trace);
+	return shuffleWithSpillDiscovery(_data, _target, {}, _target.size(), _spilledVariables);
 }
 
 
