@@ -38,7 +38,16 @@ add_executable(yul_fuzztest ${yul_fuzztest_sources})
 target_link_libraries(yul_fuzztest PRIVATE yul)
 link_fuzztest(yul_fuzztest)
 
+set(evmasm_fuzztest_sources
+	libevmasm/BlockDeduplicatorPropertyTest.cpp
+)
+detect_stray_source_files("${evmasm_fuzztest_sources}" "libevmasm/")
+
+add_executable(evmasm_fuzztest ${evmasm_fuzztest_sources})
+target_link_libraries(evmasm_fuzztest PRIVATE evmasm)
+link_fuzztest(evmasm_fuzztest)
+
 # Convenience target to build all per-library property-test executables at once (e.g. in CI).
 # New <lib>_fuzztest targets should add themselves here.
 add_custom_target(property_tests)
-add_dependencies(property_tests yul_fuzztest)
+add_dependencies(property_tests yul_fuzztest evmasm_fuzztest)
