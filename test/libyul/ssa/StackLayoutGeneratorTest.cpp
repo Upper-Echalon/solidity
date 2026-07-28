@@ -87,10 +87,13 @@ protected:
 		_out << "\\\n";
 		_out << "IN: " << stackToString(blockLayout->stackIn) << "\\l\\\n";
 
+		// Reconstruct the per-operation input layouts and the exit state by replaying the recorded
+		// shuffle traces and operation effects from the block's stackIn.
+		StackData operationStack = blockLayout->stackIn;
 		std::size_t i = 0;
 		m_cfg.forEachOperation(block, [&](InstId const _instId, SSACFG::Inst const& _inst) {
-			yulAssert(i < blockLayout->operationIn.size());
-			auto operationStack = blockLayout->operationIn[i];
+			yulAssert(i < blockLayout->operationShuffles.size());
+			replay(operationStack, blockLayout->operationShuffles[i]);
 
 			_out << "\\l\\\n";
 			_out << stackToString(operationStack) << "\\l\\\n";
@@ -118,8 +121,9 @@ protected:
 			++i;
 		});
 
+		replay(operationStack, blockLayout->exitShuffle);
 		_out << "\\l\\\n";
-		_out << "OUT: " << stackToString(blockLayout->exitIn) << "\\l\\\n";
+		_out << "OUT: " << stackToString(operationStack) << "\\l\\\n";
 	}
 
 private:
