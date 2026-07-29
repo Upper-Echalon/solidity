@@ -179,6 +179,7 @@ bool isFutureYulReservedIdentifier(std::string_view const _literal)
 		_literal == "mcopy" ||
 		_literal == "memoryguard" ||
 		_literal == "prevrandao" ||
+		_literal == "slotnum" ||
 		_literal == "tload" ||
 		_literal == "tstore";
 }

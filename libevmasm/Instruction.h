@@ -93,6 +93,7 @@ enum class Instruction: uint8_t
 	BASEFEE,                  ///< get the block's basefee
 	BLOBHASH = 0x49,          ///< get a versioned hash of one of the blobs associated with the transaction
 	BLOBBASEFEE = 0x4a,       ///< get the block's blob basefee
+	SLOTNUM = 0x4b,           ///< get the current beacon chain slot number
 
 	POP = 0x50,               ///< remove item from stack
 	MLOAD,                    ///< load word from memory

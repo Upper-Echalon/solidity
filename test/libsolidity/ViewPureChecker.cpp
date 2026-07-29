@@ -56,6 +56,8 @@ BOOST_AUTO_TEST_CASE(environment_access)
 		view.emplace_back("address(0x4242).staticcall(\"\")");
 	if (solidity::test::CommonOptions::get().evmVersion().hasBlobHash())
 		view.emplace_back("blobhash(7)");
+	if (solidity::test::CommonOptions::get().evmVersion().hasSlotNum())
+		view.emplace_back("block.slotnum");
 
 	// ``block.blockhash`` and ``blockhash`` are tested separately below because their usage will
 	// produce warnings that can't be handled in a generic way.
@@ -115,6 +117,22 @@ BOOST_AUTO_TEST_CASE(environment_access)
 		);
 	else
 		CHECK_SUCCESS_NO_WARNINGS(blobBaseFeeContract);
+
+	std::string slotNumContract = "contract C { function f() view public { block.slotnum; } }";
+	if (!solidity::test::CommonOptions::get().evmVersion().hasSlotNum())
+		CHECK_ERROR(
+			slotNumContract,
+			TypeError,
+			"\"slotnum\" is not supported by the VM version."
+		);
+	else
+		CHECK_SUCCESS_NO_WARNINGS(slotNumContract);
+
+	if (solidity::test::CommonOptions::get().evmVersion().hasSlotNum())
+		CHECK_WARNING(
+			"contract C { function f() public { block.slotnum; } }",
+			"Function state mutability can be restricted to view"
+		);
 }
 
 BOOST_AUTO_TEST_CASE(address_staticcall)

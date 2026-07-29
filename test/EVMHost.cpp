@@ -158,6 +158,7 @@ EVMHost::EVMHost(langutil::EVMVersion _evmVersion, evmc::VM& _vm):
 	tx_context.block_base_fee = evmc::bytes32{7};
 	// The minimum value of blobbasefee
 	tx_context.blob_base_fee = evmc::bytes32{1};
+	tx_context.block_slot_number = 0xaaaaaaaa;
 
 	static evmc_bytes32 const blob_hashes_array[] = {
 		0x0100000000000000000000000000000000000000000000000000000000000001_bytes32,

@@ -224,6 +224,7 @@ message NullaryOp {
     CHAINID = 17;
     BASEFEE = 18;
     BLOBBASEFEE = 19;
+    SLOTNUM = 20;
   }
   required NOp op = 1;
 }

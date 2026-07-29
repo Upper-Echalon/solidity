@@ -561,6 +561,7 @@ bool SemanticInformation::invalidInPureFunctions(Instruction _instruction)
 	case Instruction::CHAINID:
 	case Instruction::BASEFEE:
 	case Instruction::BLOBBASEFEE:
+	case Instruction::SLOTNUM:
 	case Instruction::GAS:
 	case Instruction::GASPRICE:
 	case Instruction::EXTCODESIZE:
