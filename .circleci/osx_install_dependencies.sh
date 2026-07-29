@@ -46,7 +46,7 @@ function validate_checksum {
   fi
 }
 
-if [ ! -f /usr/local/lib/libz3.a ] # if this file does not exists (cache was not restored), rebuild dependencies
+if [ ! -f /usr/local/bin/z3 ] # if this file does not exists (cache was not restored), rebuild dependencies
 then
   brew update
   brew upgrade
@@ -93,20 +93,11 @@ then
 
   # z3
   z3_version="4.13.3"
-  z3_dir="z3-z3-$z3_version"
-  z3_package="z3-$z3_version.tar.gz"
-  wget "https://github.com/Z3Prover/z3/archive/refs/tags/$z3_package"
-  validate_checksum "$z3_package" f59c9cf600ea57fb64ffeffbffd0f2d2b896854f339e846f48f069d23bc14ba0
-  tar xf "$z3_package"
-  rm "$z3_package"
-  cd "$z3_dir"
-  mkdir build
-  cd build
-  cmake -DCMAKE_OSX_ARCHITECTURES:STRING="x86_64;arm64" -DZ3_BUILD_LIBZ3_SHARED=false ..
-  make -j "$(nproc)"
-  sudo make install
-  cd ../..
-  rm -rf "$z3_dir"
+  z3_archive_name="z3-${z3_version}-arm64-osx-13.7"
+  wget "https://github.com/Z3Prover/z3/releases/download/z3-${z3_version}/${z3_archive_name}.zip" -O /tmp/z3.zip
+  validate_checksum /tmp/z3.zip 2b2c6e23ff5488722bc93002e04c6d6f60d621af9d345f2e05a8691b40280e53
+  sudo unzip -j /tmp/z3.zip "${z3_archive_name}/bin/z3" -d /usr/local/bin
+  rm -f /tmp/z3.zip
 
   # evmone
   evmone_version="0.22.0"
