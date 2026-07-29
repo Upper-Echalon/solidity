@@ -45,6 +45,8 @@ public:
 
 	/// @returns the symbolic _member.
 	smtutil::Expression member(std::string const& _member) const;
+	/// @returns true if _member is part of this tuple.
+	bool hasMember(std::string const& _member) const { return m_componentIndices.count(_member) > 0; }
 	/// Generates a new tuple where _member is assigned _value.
 	smtutil::Expression assignMember(std::string const& _member, smtutil::Expression const& _value);
 
@@ -147,6 +149,7 @@ public:
 	smtutil::SortPointer const& txSort() const { return m_tx.sort(); }
 	void newTx() { m_tx.newVar(); }
 	smtutil::Expression txMember(std::string const& _member) const;
+	bool hasTxMember(std::string const& _member) const { return m_tx.hasMember(_member); }
 	smtutil::Expression txFunctionConstraints(FunctionDefinition const& _function) const;
 	smtutil::Expression txTypeConstraints() const;
 	smtutil::Expression txNonPayableConstraint() const;
