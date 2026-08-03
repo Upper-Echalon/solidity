@@ -27,15 +27,20 @@
 #include <libevmasm/AssemblyItem.h>
 #include <libevmasm/BlockDeduplicator.h>
 #include <libevmasm/Instruction.h>
+#include <libevmasm/SemanticInformation.h>
 
 #include <fuzztest/fuzztest.h>
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <iostream>
+#include <iterator>
 #include <map>
 #include <ostream>
+#include <set>
 #include <sstream>
 #include <utility>
 #include <vector>
@@ -348,6 +353,125 @@ fuzztest::Domain<AssemblyItems> programDomain()
 	);
 }
 
+/// Reference implementation of BlockDeduplicator::deduplicate() from commit 70198f157: an ordered set with a
+/// lexicographic suffix comparator over a copy of the block iterator.
+namespace reference
+{
+
+struct BlockIterator
+{
+	using iterator_category = std::forward_iterator_tag;
+	using value_type = AssemblyItem const;
+	using difference_type = std::ptrdiff_t;
+	using pointer = AssemblyItem const*;
+	using reference = AssemblyItem const&;
+
+	BlockIterator(
+		AssemblyItems::const_iterator _it,
+		AssemblyItems::const_iterator _end,
+		AssemblyItem const* _replaceItem = nullptr,
+		AssemblyItem const* _replaceWith = nullptr
+	):
+		it(_it), end(_end), replaceItem(_replaceItem), replaceWith(_replaceWith) {}
+
+	BlockIterator& operator++()
+	{
+		if (it == end)
+			return *this;
+		if (SemanticInformation::altersControlFlow(*it) && *it != AssemblyItem{Instruction::JUMPI})
+			it = end;
+		else
+		{
+			++it;
+			while (it != end && it->type() == Tag)
+				++it;
+		}
+		return *this;
+	}
+
+	bool operator==(BlockIterator const& _other) const { return it == _other.it; }
+	bool operator!=(BlockIterator const& _other) const { return it != _other.it; }
+
+	AssemblyItem const& operator*() const
+	{
+		if (replaceItem && replaceWith && *it == *replaceItem)
+			return *replaceWith;
+		else
+			return *it;
+	}
+
+	AssemblyItems::const_iterator it;
+	AssemblyItems::const_iterator end;
+	AssemblyItem const* replaceItem = nullptr;
+	AssemblyItem const* replaceWith = nullptr;
+};
+
+bool deduplicate(AssemblyItems& _items)
+{
+	// Compares indices based on the suffix that starts there, ignoring tags and stopping at
+	// opcodes that stop the control flow.
+
+	// Virtual tag that signifies "the current block" and which is used to optimize loops.
+	// We abort if this virtual tag actually exists.
+	AssemblyItem const pushSelf{PushTag, u256(-4)};
+	if (
+		std::count(_items.cbegin(), _items.cend(), pushSelf.tag()) ||
+		std::count(_items.cbegin(), _items.cend(), pushSelf.pushTag())
+	)
+			return false;
+
+	std::function<bool(std::size_t, std::size_t)> comparator = [&](std::size_t _i, std::size_t _j)
+	{
+		if (_i == _j)
+			return false;
+
+		// To compare recursive loops, we have to already unify PushTag opcodes of the
+		// block's own tag.
+		AssemblyItem pushFirstTag{pushSelf};
+		AssemblyItem pushSecondTag{pushSelf};
+
+		if (_i < _items.size() && _items.at(_i).type() == Tag)
+			pushFirstTag = _items.at(_i).pushTag();
+		if (_j < _items.size() && _items.at(_j).type() == Tag)
+			pushSecondTag = _items.at(_j).pushTag();
+
+		using diff_type = BlockIterator::difference_type;
+		BlockIterator first{_items.begin() + static_cast<diff_type>(_i), _items.end(), &pushFirstTag, &pushSelf};
+		BlockIterator second{_items.begin() + static_cast<diff_type>(_j), _items.end(), &pushSecondTag, &pushSelf};
+		BlockIterator end{_items.end(), _items.end()};
+
+		if (first != end && (*first).type() == Tag)
+			++first;
+		if (second != end && (*second).type() == Tag)
+			++second;
+
+		return std::lexicographical_compare(first, end, second, end);
+	};
+
+	std::map<u256, u256> replacedTags;
+	std::size_t iterations = 0;
+	for (; ; ++iterations)
+	{
+		std::set<std::size_t, std::function<bool(std::size_t, std::size_t)>> blocksSeen(comparator);
+		for (std::size_t i = 0; i < _items.size(); ++i)
+		{
+			if (_items.at(i).type() != Tag)
+				continue;
+			auto it = blocksSeen.find(i);
+			if (it == blocksSeen.end())
+				blocksSeen.insert(i);
+			else
+				replacedTags[_items.at(i).data()] = _items.at(*it).data();
+		}
+
+		if (!BlockDeduplicator::applyTagReplacement(_items, replacedTags))
+			break;
+	}
+	return iterations > 0;
+}
+
+}
+
 }
 
 static void DeduplicationPreservesBehavior(AssemblyItems const& _program)
@@ -407,5 +531,19 @@ static void DeduplicationInvariants(AssemblyItems const& _program)
 }
 
 FUZZ_TEST(BlockDeduplicatorProperty, DeduplicationInvariants).WithDomains(programDomain());
+
+static void DeduplicationMatchesReference(AssemblyItems const& _program)
+{
+	AssemblyItems optimized = _program;
+	bool const changed = BlockDeduplicator{optimized}.deduplicate();
+
+	AssemblyItems referenceItems = _program;
+	bool const referenceChanged = reference::deduplicate(referenceItems);
+
+	ASSERT_EQ(changed, referenceChanged);
+	ASSERT_EQ(optimized, referenceItems);
+}
+
+FUZZ_TEST(BlockDeduplicatorProperty, DeduplicationMatchesReference).WithDomains(programDomain());
 
 }
