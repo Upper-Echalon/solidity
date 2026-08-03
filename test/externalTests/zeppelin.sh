@@ -108,6 +108,14 @@ function zeppelin_test
     # Fails under evmVersion=osaka, likely due to transaction gas limits introduced by EIP-7825 or by the modexp upper bound EIP-7823.
     sed -i "s|describe(\('RSA'\)|describe.skip(\1|g" test/utils/cryptography/RSA.test.js
 
+    # The issue is that the following tests don't pass a gas limit to the rate limiter (which disables and then enables automine).
+    # For some reason our CI ends up hanging, thus forcing a timeout, which then causes automine to remain off for the rest of the
+    # run, causing a cascade of 2000+ test failures.
+    # TODO: remove when https://github.com/OpenZeppelin/openzeppelin-contracts/issues/6663 is addressed.
+    sed -i "s|)(0n, k, q),|)(0n, k, q, { gasLimit: 1000000 }),|" test/utils/RateLimiter.test.js
+    sed -i "s|mock.\$sync(0n, k)|mock.\$sync(0n, k, { gasLimit: 1000000 })|" test/utils/RateLimiter.test.js
+    sed -i "s|)(0n, window, capacity),|)(0n, window, capacity, { gasLimit: 1000000 }),|" test/utils/RateLimiter.test.js
+
     cat <<-EOF >> "$config_file"
     const { TASK_COMPILE_SOLIDITY_COMPILE } = require("hardhat/builtin-tasks/task-names");
 
