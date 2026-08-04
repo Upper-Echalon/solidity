@@ -30,9 +30,13 @@
 #include <libsolutil/Common.h>
 #include <libsolutil/Numeric.h>
 #include <libsolutil/Assertions.h>
+
+#include <boost/container_hash/hash.hpp>
+
 #include <optional>
 #include <iostream>
 #include <sstream>
+#include <type_traits>
 
 namespace solidity::evmasm
 {
@@ -158,6 +162,19 @@ public:
 			return data() == _other.data();
 	}
 	bool operator!=(AssemblyItem const& _other) const { return !operator==(_other); }
+	/// Hash function compatible with `operator==`. Found via ADL by `boost::hash`.
+	friend std::size_t hash_value(AssemblyItem const& _item)
+	{
+		std::size_t hash = 0;
+		boost::hash_combine(hash, static_cast<std::underlying_type_t<AssemblyItemType>>(_item.m_type));
+		if (_item.m_type == Operation)
+			boost::hash_combine(hash, static_cast<std::underlying_type_t<Instruction>>(_item.instruction()));
+		else if (_item.m_type == VerbatimBytecode)
+			boost::hash_combine(hash, *_item.m_verbatimBytecode);
+		else
+			boost::hash_combine(hash, _item.data());
+		return hash;
+	}
 	/// Less-than operator compatible with operator==.
 	bool operator<(AssemblyItem const& _other) const
 	{

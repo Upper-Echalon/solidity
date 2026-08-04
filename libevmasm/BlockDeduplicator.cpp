@@ -27,8 +27,12 @@
 #include <libevmasm/AssemblyItem.h>
 #include <libevmasm/SemanticInformation.h>
 
-#include <functional>
-#include <set>
+#include <boost/container_hash/hash.hpp>
+
+#include <range/v3/algorithm/any_of.hpp>
+#include <range/v3/algorithm/equal.hpp>
+
+#include <unordered_set>
 
 using namespace solidity;
 using namespace solidity::evmasm;
@@ -36,60 +40,59 @@ using namespace solidity::evmasm;
 
 bool BlockDeduplicator::deduplicate()
 {
-	// Compares indices based on the suffix that starts there, ignoring tags and stopping at
-	// opcodes that stop the control flow.
+	// Group basic blocks by a content hash and dedup within each bucket.
+	// The hash and equality both walk a BlockIterator that ignores tags and stops at
+	// opcodes that terminate control flow, replacing the block's own self-push by a
+	// virtual tag so that recursive loops match.
 
-	// Virtual tag that signifies "the current block" and which is used to optimise loops.
+	// Virtual tag that signifies "the current block" and which is used to optimize loops.
 	// We abort if this virtual tag actually exists.
-	AssemblyItem pushSelf{PushTag, u256(-4)};
-	if (
-		std::count(m_items.cbegin(), m_items.cend(), pushSelf.tag()) ||
-		std::count(m_items.cbegin(), m_items.cend(), pushSelf.pushTag())
-	)
-		return false;
-
-	std::function<bool(size_t, size_t)> comparator = [&](size_t _i, size_t _j)
+	AssemblyItem const pushSelf{PushTag, u256(-4)};
 	{
-		if (_i == _j)
+		AssemblyItem const selfTag = pushSelf.tag();
+		if (ranges::any_of(m_items, [&](AssemblyItem const& _item) { return _item == selfTag || _item == pushSelf; }))
 			return false;
+	}
 
-		// To compare recursive loops, we have to already unify PushTag opcodes of the
-		// block's own tag.
-		AssemblyItem pushFirstTag{pushSelf};
-		AssemblyItem pushSecondTag{pushSelf};
+	BlockIterator const end{m_items.end(), m_items.end()};
 
-		if (_i < m_items.size() && m_items.at(_i).type() == Tag)
-			pushFirstTag = m_items.at(_i).pushTag();
-		if (_j < m_items.size() && m_items.at(_j).type() == Tag)
-			pushSecondTag = m_items.at(_j).pushTag();
-
-		using diff_type = BlockIterator::difference_type;
-		BlockIterator first{m_items.begin() + diff_type(_i), m_items.end(), &pushFirstTag, &pushSelf};
-		BlockIterator second{m_items.begin() + diff_type(_j), m_items.end(), &pushSecondTag, &pushSelf};
-		BlockIterator end{m_items.end(), m_items.end()};
-
-		if (first != end && (*first).type() == Tag)
-			++first;
-		if (second != end && (*second).type() == Tag)
-			++second;
-
-		return std::lexicographical_compare(first, end, second, end);
+	// yields a block iterator into the body of a block (skips `Tag` typed assembly items at `_blockBegin`)
+	auto const blockBodyBegin = [&](std::size_t const _blockBegin, AssemblyItem const& _selfTagPush)
+	{
+		BlockIterator it{
+			m_items.begin() + static_cast<BlockIterator::difference_type>(_blockBegin),
+			m_items.end(),
+			&_selfTagPush,
+			&pushSelf
+		};
+		if (it != end && (*it).type() == Tag)
+			++it;
+		return it;
 	};
 
-	size_t iterations = 0;
+	auto const hashBlockAt = [&](std::size_t const _i)
+	{
+		return boost::hash_range(blockBodyBegin(_i, m_items[_i].pushTag()), end);
+	};
+	auto const blocksAtEqual = [&](std::size_t const _i, std::size_t const _j)
+	{
+		return ranges::equal(
+			blockBodyBegin(_i, m_items[_i].pushTag()), end,
+			blockBodyBegin(_j, m_items[_j].pushTag()), end
+		);
+	};
+
+	std::size_t iterations = 0;
 	for (; ; ++iterations)
 	{
-		//@todo this should probably be optimized.
-		std::set<size_t, std::function<bool(size_t, size_t)>> blocksSeen(comparator);
-		for (size_t i = 0; i < m_items.size(); ++i)
+		std::unordered_set<std::size_t, decltype(hashBlockAt), decltype(blocksAtEqual)> seen(0, hashBlockAt, blocksAtEqual);
+		for (std::size_t i = 0; i < m_items.size(); ++i)
 		{
-			if (m_items.at(i).type() != Tag)
+			if (m_items[i].type() != Tag)
 				continue;
-			auto it = blocksSeen.find(i);
-			if (it == blocksSeen.end())
-				blocksSeen.insert(i);
-			else
-				m_replacedTags[m_items.at(i).data()] = m_items.at(*it).data();
+			auto const [it, inserted] = seen.insert(i);
+			if (!inserted)
+				m_replacedTags[m_items[i].data()] = m_items[*it].data();
 		}
 
 		if (!applyTagReplacement(m_items, m_replacedTags))
