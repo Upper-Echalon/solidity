@@ -170,8 +170,8 @@ protected:
 private:
 	struct Environment
 	{
-		std::unordered_map<YulName, YulName> storage;
-		std::unordered_map<YulName, YulName> memory;
+		util::unordered_flat_map<YulName, YulName> storage;
+		util::unordered_flat_map<YulName, YulName> memory;
 		/// If keccak[s, l] = y then y := keccak256(s, l) occurs in the code.
 		std::map<std::pair<YulName, YulName>, YulName> keccak;
 	};
@@ -181,7 +181,7 @@ private:
 		std::map<YulName, AssignedValue> value;
 		/// m_references[a].contains(b) <=> the current expression assigned to a references b
 		/// The mapped vectors _must always_ be sorted
-		std::unordered_map<YulName, std::vector<YulName>> sortedReferences;
+		util::unordered_flat_map<YulName, std::vector<YulName>> sortedReferences;
 
 		Environment environment;
 	};
@@ -193,8 +193,8 @@ private:
 	void joinKnowledge(Environment const& _olderEnvironment);
 
 	static void joinKnowledgeHelper(
-		std::unordered_map<YulName, YulName>& _thisData,
-		std::unordered_map<YulName, YulName> const& _olderData
+		util::unordered_flat_map<YulName, YulName>& _thisData,
+		util::unordered_flat_map<YulName, YulName> const& _olderData
 	);
 
 	State m_state;

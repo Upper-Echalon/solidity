@@ -185,7 +185,7 @@ bool Pattern::matchesBaseItem(AssemblyItem const* _item) const
 	return true;
 }
 
-Pattern::Expression const& Pattern::matchGroupValue() const
+Expression const& Pattern::matchGroupValue() const
 {
 	assertThrow(m_matchGroup > 0, OptimizerException, "");
 	assertThrow(!!m_matchGroups, OptimizerException, "");

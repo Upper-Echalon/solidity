@@ -38,7 +38,8 @@ endif()
 if (WIN32)
 	# Boost 1.77 fixes a bug that causes crashes on Windows for some relative paths in --allow-paths.
 	# See https://github.com/boostorg/filesystem/issues/201
-	find_package(Boost 1.77.0 QUIET REQUIRED COMPONENTS ${BOOST_COMPONENTS})
+	# Boost 1.83 is the project-wide minimum version, and also provides Boost.Unordered flat containers.
+	find_package(Boost 1.83.0 QUIET REQUIRED COMPONENTS ${BOOST_COMPONENTS})
 else()
 	# Boost 1.65 is the first to also provide boost::get for rvalue-references (#5787).
 	# Boost 1.67 moved container_hash into is own module.

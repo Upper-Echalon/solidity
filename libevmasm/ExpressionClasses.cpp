@@ -39,7 +39,7 @@ using namespace solidity;
 using namespace solidity::evmasm;
 using namespace solidity::langutil;
 
-bool ExpressionClasses::Expression::operator==(ExpressionClasses::Expression const& _other) const
+bool Expression::operator==(Expression const& _other) const
 {
 	assertThrow(!!item && !!_other.item, OptimizerException, "");
 	auto type = item->type();
@@ -58,7 +58,7 @@ bool ExpressionClasses::Expression::operator==(ExpressionClasses::Expression con
 			std::tie(_other.item->data(), _other.arguments, _other.sequenceNumber);
 }
 
-size_t ExpressionClasses::Expression::ExpressionHash::operator()(Expression const& _expression) const
+size_t ExpressionHash::operator()(Expression const& _expression) const
 {
 	assertThrow(!!_expression.item, OptimizerException, "");
 	size_t seed = 0;

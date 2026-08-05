@@ -28,11 +28,11 @@
 #include <ostream>
 #include <set>
 #include <tuple>
-#include <unordered_map>
 #include <vector>
 #include <liblangutil/EVMVersion.h>
 #include <libsolutil/CommonIO.h>
 #include <libsolutil/Exceptions.h>
+#include <libsolutil/UnorderedContainers.h>
 #include <libevmasm/ExpressionClasses.h>
 #include <libevmasm/SemanticInformation.h>
 #include <libevmasm/KnownState.h>
@@ -165,11 +165,11 @@ private:
 	/// Current height of the stack relative to the start.
 	int m_stackHeight = 0;
 	/// If (b, a) is in m_requests then b is needed to compute a.
-	std::unordered_multimap<Id, Id> m_neededBy;
+	util::unordered_multimap<Id, Id> m_neededBy;
 	/// Current content of the stack.
 	std::map<int, Id> m_stack;
 	/// Current positions of equivalence classes, equal to the empty set if already deleted.
-	std::unordered_map<Id, std::set<int>> m_classPositions;
+	util::unordered_flat_map<Id, std::set<int>> m_classPositions;
 
 	/// The actual equivalence class items and how to compute them.
 	ExpressionClasses& m_expressionClasses;

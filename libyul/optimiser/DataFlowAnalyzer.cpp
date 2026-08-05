@@ -67,7 +67,7 @@ void DataFlowAnalyzer::operator()(ExpressionStatement& _statement)
 		if (auto vars = isSimpleStore(StoreLoadLocation::Storage, _statement))
 		{
 			ASTModifier::operator()(_statement);
-			std::erase_if(m_state.environment.storage, mapTuple([&](auto&& key, auto&& value) {
+			boost::unordered::erase_if(m_state.environment.storage, mapTuple([&](auto&& key, auto&& value) {
 				return
 					!m_knowledgeBase.knownToBeDifferent(vars->first, key) &&
 					vars->second != value;
@@ -78,7 +78,7 @@ void DataFlowAnalyzer::operator()(ExpressionStatement& _statement)
 		else if (auto vars = isSimpleStore(StoreLoadLocation::Memory, _statement))
 		{
 			ASTModifier::operator()(_statement);
-			std::erase_if(m_state.environment.memory, mapTuple([&](auto&& key, auto&& /* value */) {
+			boost::unordered::erase_if(m_state.environment.memory, mapTuple([&](auto&& key, auto&& /* value */) {
 				return !m_knowledgeBase.knownToBeDifferentByAtLeast32(vars->first, key);
 			}));
 			// TODO erase keccak knowledge, but in a more clever way
@@ -272,14 +272,14 @@ void DataFlowAnalyzer::handleAssignment(std::set<YulName> const& _variables, Exp
 			// assignment to slot denoted by "name"
 			m_state.environment.storage.erase(name);
 			// assignment to slot contents denoted by "name"
-			std::erase_if(m_state.environment.storage, mapTuple([&name](auto&& /* key */, auto&& value) { return value == name; }));
+			boost::unordered::erase_if(m_state.environment.storage, mapTuple([&name](auto&& /* key */, auto&& value) { return value == name; }));
 			// assignment to slot denoted by "name"
 			m_state.environment.memory.erase(name);
 			// assignment to slot contents denoted by "name"
 			std::erase_if(m_state.environment.keccak, [&name](auto&& _item) {
 				return _item.first.first == name || _item.first.second == name || _item.second == name;
 			});
-			std::erase_if(m_state.environment.memory, mapTuple([&name](auto&& /* key */, auto&& value) { return value == name; }));
+			boost::unordered::erase_if(m_state.environment.memory, mapTuple([&name](auto&& /* key */, auto&& value) { return value == name; }));
 		}
 	}
 
@@ -337,8 +337,8 @@ void DataFlowAnalyzer::clearValues(std::set<YulName> const& _variablesToClear)
 	auto eraseCondition = mapTuple([&_variablesToClear](auto&& key, auto&& value) {
 		return _variablesToClear.count(key) || _variablesToClear.count(value);
 	});
-	std::erase_if(m_state.environment.storage, eraseCondition);
-	std::erase_if(m_state.environment.memory, eraseCondition);
+	boost::unordered::erase_if(m_state.environment.storage, eraseCondition);
+	boost::unordered::erase_if(m_state.environment.memory, eraseCondition);
 	std::erase_if(m_state.environment.keccak, [&_variablesToClear](auto&& _item) {
 		return
 			_variablesToClear.count(_item.first.first) ||
@@ -473,15 +473,15 @@ void DataFlowAnalyzer::joinKnowledge(Environment const& _olderEnvironment)
 }
 
 void DataFlowAnalyzer::joinKnowledgeHelper(
-	std::unordered_map<YulName, YulName>& _this,
-	std::unordered_map<YulName, YulName> const& _older
+	util::unordered_flat_map<YulName, YulName>& _this,
+	util::unordered_flat_map<YulName, YulName> const& _older
 )
 {
 	// We clear if the key does not exist in the older map or if the value is different.
 	// This also works for memory because _older is an "older version"
 	// of m_state.environment.memory and thus any overlapping write would have cleared the keys
 	// that are not known to be different inside m_state.environment.memory already.
-	std::erase_if(_this, mapTuple([&_older](auto&& key, auto&& currentValue){
+	boost::unordered::erase_if(_this, mapTuple([&_older](auto&& key, auto&& currentValue){
 		YulName const* oldValue = valueOrNullptr(_older, key);
 		return !oldValue || *oldValue != currentValue;
 	}));

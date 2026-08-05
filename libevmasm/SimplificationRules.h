@@ -52,8 +52,6 @@ public:
 	Rules(Rules const&) = delete;
 	Rules& operator=(Rules const&) = delete;
 
-	using Expression = ExpressionClasses::Expression;
-
 	Rules();
 
 	/// @returns a pointer to the first matching pattern and sets the match
@@ -87,7 +85,6 @@ private:
 class Pattern
 {
 public:
-	using Expression = ExpressionClasses::Expression;
 	using Id = ExpressionClasses::Id;
 
 	using Builtins = evmasm::EVMBuiltins<Pattern>;
@@ -147,7 +144,6 @@ private:
  */
 struct ExpressionTemplate
 {
-	using Expression = ExpressionClasses::Expression;
 	using Id = ExpressionClasses::Id;
 	explicit ExpressionTemplate(Pattern const& _pattern, langutil::DebugData::ConstPtr const& _debugData);
 	std::string toString() const;

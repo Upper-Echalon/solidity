@@ -432,7 +432,7 @@ std::set<u256> KnownState::tagsInExpression(KnownState::Id _expressionId)
 	if (m_tagUnions.left.count(_expressionId))
 		return m_tagUnions.left.at(_expressionId);
 	// Might be a tag, then return the set of itself.
-	ExpressionClasses::Expression expr = m_expressionClasses->representative(_expressionId);
+	Expression expr = m_expressionClasses->representative(_expressionId);
 	if (expr.item && expr.item->type() == PushTag)
 		return std::set<u256>({expr.item->data()});
 	else

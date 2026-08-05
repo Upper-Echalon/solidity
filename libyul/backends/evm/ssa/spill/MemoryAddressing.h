@@ -23,9 +23,9 @@
 #include <libyul/backends/evm/ssa/spill/SpillSet.h>
 
 #include <libsolutil/Numeric.h>
+#include <libsolutil/UnorderedContainers.h>
 
 #include <span>
-#include <unordered_map>
 #include <vector>
 
 namespace solidity::yul::ssa::spill
@@ -50,7 +50,7 @@ public:
 
 private:
 	/// m_addresses[cfgIdx][value.value] -> u256 final address
-	std::vector<std::unordered_map<InstId::ValueType, u256>> m_addresses;
+	std::vector<solidity::util::unordered_flat_map<InstId::ValueType, u256>> m_addresses;
 };
 
 }

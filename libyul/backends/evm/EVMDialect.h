@@ -29,10 +29,11 @@
 
 #include <liblangutil/EVMVersion.h>
 
+#include <libsolutil/UnorderedContainers.h>
+
 #include <array>
 #include <optional>
 #include <set>
-#include <unordered_map>
 #include <vector>
 
 namespace solidity::yul
@@ -110,7 +111,7 @@ protected:
 
 	bool const m_objectAccess;
 	langutil::EVMVersion const m_evmVersion;
-	std::unordered_map<std::string_view, BuiltinHandle> m_builtinFunctionsByName;
+	util::unordered_flat_map<std::string_view, BuiltinHandle> m_builtinFunctionsByName;
 	std::vector<BuiltinFunctionForEVM const*> m_functions;
 	std::array<std::unique_ptr<BuiltinFunctionForEVM>, verbatimIDOffset> mutable m_verbatimFunctions{};
 	std::set<std::string, std::less<>> m_reserved;

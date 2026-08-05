@@ -225,7 +225,7 @@ void CSECodeGenerator::addDependencies(Id _c)
 		return; // it is already on the stack
 	if (m_neededBy.find(_c) != m_neededBy.end())
 		return; // we already computed the dependencies for _c
-	ExpressionClasses::Expression expr = m_expressionClasses.representative(_c);
+	Expression expr = m_expressionClasses.representative(_c);
 	assertThrow(expr.item, OptimizerException, "");
 	// If this exception happens, we need to find a different way to generate the
 	// compound expression.
@@ -322,7 +322,7 @@ void CSECodeGenerator::generateClassElement(Id _c, bool _allowSequenced)
 		);
 		return;
 	}
-	ExpressionClasses::Expression const& expr = m_expressionClasses.representative(_c);
+	Expression const& expr = m_expressionClasses.representative(_c);
 	assertThrow(
 		_allowSequenced || expr.sequenceNumber == 0,
 		OptimizerException,

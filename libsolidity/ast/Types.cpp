@@ -35,6 +35,7 @@
 #include <libsolutil/FunctionSelector.h>
 #include <libsolutil/Keccak256.h>
 #include <libsolutil/StringUtils.h>
+#include <libsolutil/UnorderedContainers.h>
 #include <libsolutil/UTF8.h>
 #include <libsolutil/Visitor.h>
 
@@ -52,7 +53,6 @@
 #include <range/v3/view/filter.hpp>
 
 #include <limits>
-#include <unordered_set>
 #include <utility>
 
 using namespace solidity;
@@ -1516,7 +1516,7 @@ TypeResult ContractType::unaryOperatorResult(Token _operator) const
 std::vector<Type const*> CompositeType::fullDecomposition() const
 {
 	std::vector<Type const*> res = {this};
-	std::unordered_set<std::string> seen = {richIdentifier()};
+	util::unordered_flat_set<std::string> seen = {richIdentifier()};
 	for (size_t k = 0; k < res.size(); ++k)
 		if (auto composite = dynamic_cast<CompositeType const*>(res[k]))
 			for (Type const* next: composite->decomposition())

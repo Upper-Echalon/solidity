@@ -5,11 +5,15 @@ Language Features:
 
 Compiler Features:
 * EVM-ASM Optimizer: Improve performance of block deduplicator.
+* General: Improve performance throughout the compiler using Boost's flat versions of unordered set and map.
 * SMTChecker: Emit a deprecation warning for the BMC engine.
 
 Bugfixes:
 * Code Generator: Fix ICE on parenthesized custom error construction in require statement.
 * Commandline Interface: Report proper error instead of ICE on non-hex mixed-case address value given via `--libraries`.
+
+Build System:
+* Update minimum version requirement of Boost to 1.83.0 for Windows build. This matches the minimum version for other systems.
 
 
 ### 0.8.36 (2026-07-09)

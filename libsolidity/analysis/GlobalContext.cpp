@@ -27,8 +27,10 @@
 #include <libsolidity/ast/AST.h>
 #include <libsolidity/ast/TypeProvider.h>
 #include <libsolidity/ast/Types.h>
+
+#include <libsolutil/UnorderedContainers.h>
+
 #include <memory>
-#include <unordered_map>
 
 namespace solidity::frontend
 {
@@ -39,7 +41,7 @@ namespace
 /// Magic variables get negative ids for easy differentiation
 int magicVariableToID(std::string const& _name)
 {
-	static std::unordered_map<std::string, int> const magicVariables = {
+	static util::unordered_flat_map<std::string, int> const magicVariables = {
 		{"abi", -1},
 		{"addmod", -2},
 		{"assert", -3},
