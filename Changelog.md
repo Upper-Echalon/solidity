@@ -1,6 +1,7 @@
 ### 0.8.37 (unreleased)
 
 Language Features:
+* Custom Storage Layout: Allow signed positive expressions.
 
 Compiler Features:
 * EVM-ASM Optimizer: Improve performance of block deduplicator.
