@@ -87,7 +87,6 @@ private:
 	void printLicense();
 	void compile();
 	void assembleFromEVMAssemblyJSON();
-	void serveLSP();
 	void link();
 	void writeLinkedFiles();
 	/// @returns the ``// <identifier> -> name`` hint for library placeholders.

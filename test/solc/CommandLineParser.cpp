@@ -703,7 +703,6 @@ BOOST_AUTO_TEST_CASE(ethdebug)
 BOOST_AUTO_TEST_CASE(experimental_features_without_experimental_flag)
 {
 	std::vector<std::string> const experimentalFeatures {
-		"--lsp",
 		"--import-ast",
 		"--import-asm-json",
 		"--ir-ast-json",

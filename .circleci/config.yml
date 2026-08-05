@@ -435,16 +435,6 @@ commands:
       - store_artifacts_test_results
       - matrix_notify_failure_unless_pr
 
-  test_lsp:
-    steps:
-      - checkout
-      - attach_workspace:
-          at: build
-      - run:
-          name: Executing solc LSP test suite
-          command: test/lsp.py build/solc/solc --non-interactive
-      - matrix_notify_failure_unless_pr
-
   build:
     steps:
       - checkout
@@ -1435,11 +1425,6 @@ jobs:
       - store_artifacts_test_results
       - matrix_notify_failure_unless_pr
 
-  t_ubu_lsp: &t_ubu_lsp
-    <<: *base_ubuntu2404_small
-    steps:
-      - test_lsp
-
   t_archlinux_soltest: &t_archlinux_soltest
     <<: *base_archlinux
     parallelism: 20
@@ -1864,13 +1849,6 @@ jobs:
           name: "Run soltest"
           command: .circleci/soltest.ps1
           shell: powershell.exe
-      - run:
-          name: Install LSP test dependencies
-          command: python -m pip install --user numpy deepdiff colorama
-      - run:
-          name: Executing solc LSP test suite
-          command: python test/lsp.py build\solc\Release\solc.exe --non-interactive
-          shell: powershell.exe
       - store_test_results:
           path: test_results/
       - store_artifacts_test_results
@@ -2145,7 +2123,6 @@ workflows:
       - t_ubu_arm_soltest: *requires_b_ubu_static_arm
       - b_ubu_clang: *requires_nothing
       - t_ubu_clang_soltest: *requires_b_ubu_clang
-      - t_ubu_lsp: *requires_b_ubu
 
       # Ubuntu fake release build and tests
       - b_ubu_force_release: *requires_nothing

@@ -57,7 +57,6 @@ enum class InputMode
 	StandardJson,
 	Linker,
 	Assembler,
-	LanguageServer,
 	EVMAssemblerJSON
 };
 

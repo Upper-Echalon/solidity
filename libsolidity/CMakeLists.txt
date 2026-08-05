@@ -165,24 +165,6 @@ set(sources
 	interface/UniversalCallback.h
 	interface/Version.cpp
 	interface/Version.h
-	lsp/DocumentHoverHandler.cpp
-	lsp/DocumentHoverHandler.h
-	lsp/FileRepository.cpp
-	lsp/FileRepository.h
-	lsp/GotoDefinition.cpp
-	lsp/GotoDefinition.h
-	lsp/RenameSymbol.cpp
-	lsp/RenameSymbol.h
-	lsp/HandlerBase.cpp
-	lsp/HandlerBase.h
-	lsp/LanguageServer.cpp
-	lsp/LanguageServer.h
-	lsp/SemanticTokensBuilder.cpp
-	lsp/SemanticTokensBuilder.h
-	lsp/Transport.cpp
-	lsp/Transport.h
-	lsp/Utils.cpp
-	lsp/Utils.h
 	parsing/DocStringParser.cpp
 	parsing/DocStringParser.h
 	parsing/Parser.cpp

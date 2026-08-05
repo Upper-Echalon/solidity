@@ -160,7 +160,7 @@ BOOST_AUTO_TEST_CASE(multiple_input_modes)
 	};
 	std::string expectedMessage =
 		"The following options are mutually exclusive: "
-		"--help, --license, --version, --standard-json, --link, --strict-assembly, --import-ast, --lsp, --import-asm-json. "
+		"--help, --license, --version, --standard-json, --link, --strict-assembly, --import-ast, --import-asm-json. "
 		"Select at most one.";
 
 	for (auto const& mode1: inputModeOptions)

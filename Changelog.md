@@ -4,6 +4,7 @@ Language Features:
 * Custom Storage Layout: Allow signed positive expressions.
 
 Compiler Features:
+* Commandline Interface: Remove support for the experimental Language Server Protocol (LSP) mode.
 * EVM-ASM Optimizer: Improve performance of block deduplicator.
 * General: Improve performance throughout the compiler using Boost's flat versions of unordered set and map.
 * SMTChecker: Emit a deprecation warning for the BMC engine.

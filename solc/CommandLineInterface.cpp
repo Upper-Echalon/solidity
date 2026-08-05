@@ -38,8 +38,6 @@
 #include <libsolidity/interface/DebugSettings.h>
 #include <libsolidity/interface/ImportRemapper.h>
 #include <libsolidity/interface/StorageLayout.h>
-#include <libsolidity/lsp/LanguageServer.h>
-#include <libsolidity/lsp/Transport.h>
 
 #include <libyul/YulStack.h>
 
@@ -702,11 +700,7 @@ void CommandLineInterface::readInputFiles()
 			m_fileReader.setStdin(readUntilEnd(m_sin));
 	}
 
-	if (
-		m_options.input.mode != InputMode::LanguageServer &&
-		m_fileReader.sourceUnits().empty() &&
-		!m_standardJsonInput.has_value()
-	)
+	if (m_fileReader.sourceUnits().empty() && !m_standardJsonInput.has_value())
 		solThrow(CommandLineValidationError, "All specified input files either do not exist or are not regular files.");
 }
 
@@ -855,9 +849,6 @@ void CommandLineInterface::processInput()
 		m_standardJsonInput.reset();
 		break;
 	}
-	case InputMode::LanguageServer:
-		serveLSP();
-		break;
 	case InputMode::Assembler:
 		assembleYul(m_options.assembly.targetMachine);
 		break;
@@ -1186,13 +1177,6 @@ void CommandLineInterface::handleAst()
 			ASTJsonExporter(m_compiler->state(), m_compiler->sourceIndices()).print(sout(), m_compiler->ast(sourceCode.first), m_options.formatting.json);
 		}
 	}
-}
-
-void CommandLineInterface::serveLSP()
-{
-	lsp::StdioTransport transport;
-	if (!lsp::LanguageServer{transport}.run())
-		solThrow(CommandLineExecutionError, "LSP terminated abnormally.");
 }
 
 void CommandLineInterface::link()

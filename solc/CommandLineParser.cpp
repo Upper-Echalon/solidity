@@ -142,7 +142,6 @@ static std::map<InputMode, std::string> const g_inputModeName = {
 	{InputMode::Assembler, "assembler"},
 	{InputMode::StandardJson, "standard JSON"},
 	{InputMode::Linker, "linker"},
-	{InputMode::LanguageServer, "language server (LSP)"},
 	{InputMode::EVMAssemblerJSON, "EVM assembler (JSON format)"},
 };
 
@@ -161,7 +160,6 @@ void CommandLineParser::checkMutuallyExclusive(std::vector<std::string> const& _
 std::vector<std::string> const& CommandLineParser::experimentalOptionNames()
 {
 	static std::vector<std::string> const names{
-		g_strLSP,
 		g_strImportAst,
 		g_strImportEvmAssemblerJson,
 		"ir-ast-json",
@@ -490,7 +488,6 @@ void CommandLineParser::parseOutputSelection()
 		case InputMode::Help:
 		case InputMode::License:
 		case InputMode::Version:
-		case InputMode::LanguageServer:
 			solAssert(false);
 		case InputMode::Compiler:
 		case InputMode::CompilerWithASTImport:
@@ -687,12 +684,6 @@ General Information)").c_str(),
 			"WARNING: --" + g_strImportEvmAssemblerJson + " output is already optimized according to settings stored in metadata. "
 			"Using --" + g_strOptimize + " in this mode is allowed, but not necessary under normal circumstances. "
 			"--" + g_strOptimize + " forces the optimizer to run again and can produce bytecode that is not reproducible from metadata.").c_str()
-		)
-		(
-			g_strLSP.c_str(),
-			"(experimental) Switch to the language server mode. "
-			"Allows the compiler to be used as an analysis backend for your favourite IDE. "
-			"In this mode no input files are accepted and the compiler expects language server protocol (LSP) messages on standard input."
 		)
 	;
 	desc.add(alternativeInputModes);
@@ -959,6 +950,7 @@ void CommandLineParser::parseArgs(int _argc, char const* const* _argv)
 	// but hidden from --help output.
 	allOptions.add_options()
 		(g_strAssemble.c_str(), "")
+		(g_strLSP.c_str(), "")
 		(g_strYul.c_str(), "")
 	;
 	po::positional_options_description filesPositions = positionalOptionsDescription();
@@ -1000,7 +992,6 @@ void CommandLineParser::processArgs()
 		g_strLink,
 		g_strStrictAssembly,
 		g_strImportAst,
-		g_strLSP,
 		g_strImportEvmAssemblerJson,
 	});
 
@@ -1014,8 +1005,6 @@ void CommandLineParser::processArgs()
 		m_options.input.mode = InputMode::Version;
 	else if (m_args.count(g_strStandardJSON) > 0)
 		m_options.input.mode = InputMode::StandardJson;
-	else if (m_args.count(g_strLSP))
-		m_options.input.mode = InputMode::LanguageServer;
 	else if (m_args.contains(g_strStrictAssembly))
 		m_options.input.mode = InputMode::Assembler;
 	else if (m_args.count(g_strLink) > 0)
@@ -1054,6 +1043,12 @@ void CommandLineParser::processArgs()
 			CommandLineValidationError,
 			"The assembly input mode formerly accessible via --assemble is no longer supported, "
 			"please use --strict-assembly instead."
+		);
+
+	if (m_args.contains(g_strLSP))
+		solThrow(
+			CommandLineValidationError,
+			"Language Server Protocol (LSP) support has been removed from solc."
 		);
 
 	std::map<std::string, std::set<InputMode>> validOptionInputModeCombinations = {
@@ -1095,9 +1090,6 @@ void CommandLineParser::processArgs()
 			"The following options are not supported in the current input mode: " +
 			joinOptionNames(invalidOptionsForCurrentInputMode)
 		);
-
-	if (m_options.input.mode == InputMode::LanguageServer)
-		return;
 
 	checkMutuallyExclusive({g_strColor, g_strNoColor});
 	checkMutuallyExclusive({g_strStopAfter, g_strGas});
