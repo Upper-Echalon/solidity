@@ -57,14 +57,8 @@
 #include <libsolidity/interface/Version.h>
 #include <libsolidity/parsing/Parser.h>
 
-#include <libsolidity/experimental/analysis/Analysis.h>
-#include <libsolidity/experimental/analysis/FunctionDependencyAnalysis.h>
-#include <libsolidity/experimental/codegen/IRGenerator.h>
-
 #include <libsolidity/codegen/ir/Common.h>
 #include <libsolidity/codegen/ir/IRGenerator.h>
-
-#include <libstdlib/stdlib.h>
 
 #include <libyul/YulName.h>
 #include <libyul/AsmPrinter.h>
@@ -88,7 +82,6 @@
 
 #include <boost/algorithm/string/replace.hpp>
 
-#include <range/v3/algorithm/all_of.hpp>
 #include <range/v3/view/concat.hpp>
 #include <range/v3/view/map.hpp>
 
@@ -102,7 +95,6 @@
 using namespace solidity;
 using namespace solidity::langutil;
 using namespace solidity::frontend;
-using namespace solidity::stdlib;
 using namespace solidity::yul;
 using namespace std::string_literals;
 
@@ -336,7 +328,6 @@ void CompilerStack::reset(bool _keepSettings)
 		m_stopAfter = State::CompilationSuccessful;
 		m_compilationSourceType = CompilationSourceType::Solidity;
 	}
-	m_experimentalAnalysis.reset();
 	m_globalContext.reset();
 	m_sourceOrder.clear();
 	m_contracts.clear();
@@ -383,15 +374,6 @@ bool CompilerStack::parse()
 				for (auto const& import: ASTNode::filteredNodes<ImportDirective>(source.ast->nodes()))
 				{
 					solAssert(!import->path().empty(), "Import path cannot be empty.");
-					// Check whether the import directive is for the standard library,
-					// and if yes, add specified file to source units to be parsed.
-					auto it = stdlib::sources.find(import->path());
-					if (it != stdlib::sources.end())
-					{
-						auto [name, content] = *it;
-						m_sources[name].charStream = std::make_unique<CharStream>(content, name);
-						sourcesToParse.push_back(name);
-					}
 
 					// The current value of `path` is the absolute path as seen from this source file.
 					// We first have to apply remappings before we can store the actual absolute path
@@ -438,7 +420,6 @@ void CompilerStack::importASTs(std::map<std::string, Json> const& _sources)
 		ASTJsonImporter(m_evmVersion).jsonToSourceUnit(_sources);
 	for (auto& src: reconstructedSources)
 	{
-		solUnimplementedAssert(!src.second->experimentalSolidity());
 		std::string const& path = src.first;
 		Source source;
 		source.ast = src.second;
@@ -483,8 +464,6 @@ bool CompilerStack::analyze()
 
 	try
 	{
-		bool experimentalSolidity = isExperimentalSolidity();
-
 		SyntaxChecker syntaxChecker(m_errorReporter, m_optimiserSettings.runYulOptimiser, m_experimental);
 		for (Source const* source: m_sourceOrder)
 			if (source->ast && !syntaxChecker.checkSyntax(*source->ast))
@@ -492,7 +471,7 @@ bool CompilerStack::analyze()
 
 		m_globalContext = std::make_shared<GlobalContext>(m_evmVersion);
 		// We need to keep the same resolver during the whole process.
-		NameAndTypeResolver resolver(*m_globalContext, m_evmVersion, m_errorReporter, experimentalSolidity);
+		NameAndTypeResolver resolver(*m_globalContext, m_evmVersion, m_errorReporter);
 		for (Source const* source: m_sourceOrder)
 			if (source->ast && !resolver.registerDeclarations(*source->ast))
 				return false;
@@ -518,12 +497,7 @@ bool CompilerStack::analyze()
 			if (source->ast && !resolver.resolveNamesAndTypes(*source->ast))
 				return false;
 
-		if (experimentalSolidity)
-		{
-			if (!analyzeExperimental())
-				noErrors = false;
-		}
-		else if (!analyzeLegacy(noErrors))
+		if (!analyzeLegacy(noErrors))
 			noErrors = false;
 	}
 	catch (FatalError const&)
@@ -698,18 +672,6 @@ bool CompilerStack::analyzeLegacy(bool _noErrorsSoFar)
 	return noErrors;
 }
 
-bool CompilerStack::analyzeExperimental()
-{
-	solAssert(!m_experimentalAnalysis);
-	solAssert(m_maxAstId && *m_maxAstId >= 0);
-	m_experimentalAnalysis = std::make_unique<experimental::Analysis>(m_errorReporter, static_cast<std::uint64_t>(*m_maxAstId));
-	std::vector<std::shared_ptr<SourceUnit const>> sourceAsts;
-	for (Source const* source: m_sourceOrder)
-		if (source->ast)
-			sourceAsts.emplace_back(source->ast);
-	return m_experimentalAnalysis->check(sourceAsts);
-}
-
 bool CompilerStack::parseAndAnalyze(State _stopAfter)
 {
 	m_stopAfter = _stopAfter;
@@ -807,11 +769,7 @@ bool CompilerStack::compile(State _stopAfter)
 							if (m_viaIR)
 								generateEVMFromIR(*contract);
 							else
-							{
-								if (m_experimentalAnalysis)
-									solThrow(CompilerError, "Legacy codegen after experimental analysis is unsupported.");
 								compileContract(*contract, otherCompilers);
-							}
 						}
 					}
 					catch (Error const& _error)
@@ -1007,7 +965,6 @@ std::optional<std::string> const& CompilerStack::yulIR(std::string const& _contr
 std::optional<Json> CompilerStack::yulIRAst(std::string const& _contractName) const
 {
 	solAssert(m_stackState == CompilationSuccessful, "Compilation was not successful.");
-	solUnimplementedAssert(!isExperimentalSolidity());
 
 	// NOTE: Intentionally not using LazyInit. The artifact can get very large and we don't want to
 	// keep it around when compiling a large project containing many contracts.
@@ -1022,7 +979,6 @@ std::optional<Json> CompilerStack::yulIRAst(std::string const& _contractName) co
 std::optional<Json> CompilerStack::yulCFGJson(std::string const& _contractName) const
 {
 	solAssert(m_stackState == CompilationSuccessful, "Compilation was not successful.");
-	solUnimplementedAssert(!isExperimentalSolidity());
 
 	// NOTE: Intentionally not using LazyInit. The artifact can get very large and we don't want to
 	// keep it around when compiling a large project containing many contracts.
@@ -1043,7 +999,6 @@ std::optional<std::string> const& CompilerStack::yulIROptimized(std::string cons
 std::optional<Json> CompilerStack::yulIROptimizedAst(std::string const& _contractName) const
 {
 	solAssert(m_stackState == CompilationSuccessful, "Compilation was not successful.");
-	solUnimplementedAssert(!isExperimentalSolidity());
 
 	// NOTE: Intentionally not using LazyInit. The artifact can get very large and we don't want to
 	// keep it around when compiling a large project containing many contracts.
@@ -1083,7 +1038,6 @@ std::string CompilerStack::assemblyString(std::string const& _contractName, Stri
 Json CompilerStack::assemblyJSON(std::string const& _contractName) const
 {
 	solAssert(m_stackState == CompilationSuccessful, "Compilation was not successful.");
-	solUnimplementedAssert(!isExperimentalSolidity());
 
 	Contract const& currentContract = contract(_contractName);
 	if (currentContract.evmAssembly)
@@ -1118,7 +1072,6 @@ Json const& CompilerStack::contractABI(Contract const& _contract) const
 {
 	solAssert(m_stackState >= AnalysisSuccessful, "Analysis was not successful.");
 	solAssert(_contract.contract);
-	solUnimplementedAssert(!isExperimentalSolidity());
 	return _contract.abi.init([&]{ return ABI::generate(*_contract.contract); });
 }
 
@@ -1132,7 +1085,6 @@ Json const& CompilerStack::storageLayout(Contract const& _contract) const
 {
 	solAssert(m_stackState >= AnalysisSuccessful, "Analysis was not successful.");
 	solAssert(_contract.contract);
-	solUnimplementedAssert(!isExperimentalSolidity());
 
 	return _contract.storageLayout.init([&]{ return StorageLayout().generate(*_contract.contract, DataLocation::Storage); });
 }
@@ -1147,7 +1099,6 @@ Json const& CompilerStack::transientStorageLayout(Contract const& _contract) con
 {
 	solAssert(m_stackState >= AnalysisSuccessful, "Analysis was not successful.");
 	solAssert(_contract.contract);
-	solUnimplementedAssert(!isExperimentalSolidity());
 
 	return _contract.transientStorageLayout.init([&]{ return StorageLayout().generate(*_contract.contract, DataLocation::Transient); });
 }
@@ -1162,7 +1113,6 @@ Json const& CompilerStack::natspecUser(Contract const& _contract) const
 {
 	solAssert(m_stackState >= AnalysisSuccessful, "Analysis was not successful.");
 	solAssert(_contract.contract);
-	solUnimplementedAssert(!isExperimentalSolidity());
 	return _contract.userDocumentation.init([&]{ return Natspec::userDocumentation(*_contract.contract); });
 }
 
@@ -1176,14 +1126,12 @@ Json const& CompilerStack::natspecDev(Contract const& _contract) const
 {
 	solAssert(m_stackState >= AnalysisSuccessful, "Analysis was not successful.");
 	solAssert(_contract.contract);
-	solUnimplementedAssert(!isExperimentalSolidity());
 	return _contract.devDocumentation.init([&]{ return Natspec::devDocumentation(*_contract.contract); });
 }
 
 Json CompilerStack::interfaceSymbols(std::string const& _contractName) const
 {
 	solAssert(m_stackState >= AnalysisSuccessful, "Analysis was not successful.");
-	solUnimplementedAssert(!isExperimentalSolidity());
 
 	Json interfaceSymbols;
 	// Always have a methods object
@@ -1251,7 +1199,6 @@ Json CompilerStack::ethdebug(Contract const& _contract, bool _runtime) const
 {
 	solAssert(m_stackState >= AnalysisSuccessful, "Analysis was not successful.");
 	solAssert(_contract.contract);
-	solUnimplementedAssert(!isExperimentalSolidity());
 	evmasm::LinkerObject const& object = _runtime ? _contract.runtimeObject : _contract.object;
 	std::shared_ptr<evmasm::Assembly> const& assembly = _runtime ? _contract.evmRuntimeAssembly : _contract.evmAssembly;
 	if (!assembly)
@@ -1271,7 +1218,6 @@ std::string const& CompilerStack::metadata(Contract const& _contract) const
 {
 	solAssert(m_stackState >= AnalysisSuccessful, "Analysis was not successful.");
 	solAssert(_contract.contract);
-	solUnimplementedAssert(!isExperimentalSolidity());
 	return _contract.metadata.init([&]{ return createMetadata(_contract, m_viaIR); });
 }
 
@@ -1286,7 +1232,6 @@ SourceUnit const& CompilerStack::ast(std::string const& _sourceName) const
 {
 	solAssert(m_stackState >= Parsed, "Parsing not yet performed.");
 	solAssert(source(_sourceName).ast, "Parsing was not successful.");
-	solUnimplementedAssert(!isExperimentalSolidity());
 	return *source(_sourceName).ast;
 }
 
@@ -1406,31 +1351,9 @@ bool CompilerStack::resolveImports()
 		sourceOrder.push_back(_source);
 	};
 
-	std::vector<PragmaDirective const*> experimentalPragmaDirectives;
 	for (auto const& sourcePair: m_sources)
-	{
 		if (isRequestedSource(sourcePair.first))
 			toposort(&sourcePair.second);
-		if (sourcePair.second.ast && sourcePair.second.ast->experimentalSolidity())
-			for (ASTPointer<ASTNode> const& node: sourcePair.second.ast->nodes())
-				if (PragmaDirective const* pragma = dynamic_cast<PragmaDirective*>(node.get()))
-					if (pragma->literals().size() >=2 && pragma->literals()[0] == "experimental" && pragma->literals()[1] == "solidity")
-					{
-						experimentalPragmaDirectives.push_back(pragma);
-						break;
-					}
-	}
-
-	if (!experimentalPragmaDirectives.empty() && experimentalPragmaDirectives.size() != m_sources.size())
-	{
-		for (auto &&pragma: experimentalPragmaDirectives)
-			m_errorReporter.parserError(
-					2141_error,
-					pragma->location(),
-					"File declares \"pragma experimental solidity\". If you want to enable the experimental mode, all source units must include the pragma."
-			);
-		return false;
-	}
 
 	swap(m_sourceOrder, sourceOrder);
 	return true;
@@ -1623,38 +1546,19 @@ void CompilerStack::generateIR(ContractDefinition const& _contract, bool _unopti
 	for (auto const& pair: m_contracts)
 		otherYulSources.emplace(pair.second.contract, pair.second.yulIR ? *pair.second.yulIR : std::string_view{});
 
-	if (m_experimentalAnalysis)
-	{
-		experimental::IRGenerator generator(
-			m_evmVersion,
-			m_revertStrings,
-			sourceIndices(),
-			m_debugInfoSelection,
-			this,
-			*m_experimentalAnalysis
-		);
-		compiledContract.yulIR = generator.run(
-			_contract,
-			{}, // TODO: createCBORMetadata(compiledContract, /* _forIR */ true),
-			otherYulSources
-		);
-	}
-	else
-	{
-		IRGenerator generator(
-			m_evmVersion,
-			m_revertStrings,
-			sourceIndices(),
-			m_debugInfoSelection,
-			this,
-			m_optimiserSettings
-		);
-		compiledContract.yulIR = generator.run(
-			_contract,
-			createCBORMetadata(compiledContract, /* _forIR */ true),
-			otherYulSources
-		);
-	}
+	IRGenerator generator(
+		m_evmVersion,
+		m_revertStrings,
+		sourceIndices(),
+		m_debugInfoSelection,
+		this,
+		m_optimiserSettings
+	);
+	compiledContract.yulIR = generator.run(
+		_contract,
+		createCBORMetadata(compiledContract, /* _forIR */ true),
+		otherYulSources
+	);
 
 	yulAssert(compiledContract.yulIR);
 	YulStack stack = loadGeneratedIR(*compiledContract.yulIR);
@@ -2001,7 +1905,6 @@ Json gasToJson(GasEstimator::GasConsumption const& _gas)
 Json CompilerStack::gasEstimates(std::string const& _contractName) const
 {
 	solAssert(m_stackState == CompilationSuccessful, "Compilation was not successful.");
-	solUnimplementedAssert(!isExperimentalSolidity());
 
 	if (!assemblyItems(_contractName) && !runtimeAssemblyItems(_contractName))
 		return Json();
@@ -2073,20 +1976,6 @@ Json CompilerStack::gasEstimates(std::string const& _contractName) const
 	}
 
 	return output;
-}
-
-bool CompilerStack::isExperimentalSolidity() const
-{
-	return
-		!m_sourceOrder.empty() &&
-		ranges::all_of(m_sourceOrder, [](auto const* _source) { return _source->ast->experimentalSolidity(); } )
-	;
-}
-
-experimental::Analysis const& CompilerStack::experimentalAnalysis() const
-{
-	solAssert(!!m_experimentalAnalysis);
-	return *m_experimentalAnalysis;
 }
 
 void CompilerStack::reportUnimplementedFeatureError(

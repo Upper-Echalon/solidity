@@ -93,10 +93,6 @@ class Compiler;
 class GlobalContext;
 class Natspec;
 class DeclarationContainer;
-namespace experimental
-{
-class Analysis;
-}
 
 /**
  * Easy to use and self-contained Solidity compiler with as few header dependencies as possible.
@@ -296,13 +292,6 @@ public:
 	/// @returns false on error.
 	bool compile(State _stopAfter = State::CompilationSuccessful);
 
-	/// Checks whether experimental analysis is on; used in SyntaxTests to skip compilation in case it's ``true``.
-	/// @returns true if experimental analysis is set
-	bool isExperimentalAnalysis() const
-	{
-		return !!m_experimentalAnalysis;
-	}
-
 	/// @returns the list of sources (paths) used
 	virtual std::vector<std::string> sourceNames() const override;
 
@@ -436,10 +425,6 @@ public:
 	/// Changes the format of the metadata appended at the end of the bytecode.
 	void setMetadataFormat(MetadataFormat _metadataFormat) { m_metadataFormat = _metadataFormat; }
 
-	bool isExperimentalSolidity() const;
-
-	experimental::Analysis const& experimentalAnalysis() const;
-
 	static MetadataFormat defaultMetadataFormat()
 	{
 		return VersionIsRelease ? MetadataFormat::WithReleaseVersionTag : MetadataFormat::WithPrereleaseVersionTag;
@@ -517,10 +502,6 @@ private:
 	/// Perform the analysis steps of legacy language mode.
 	/// @returns false on error.
 	bool analyzeLegacy(bool _noErrorsSoFar);
-
-	/// Perform the analysis steps of experimental language mode.
-	/// @returns false on error.
-	bool analyzeExperimental();
 
 	/// Assembles the contract.
 	/// This function should only be internally called by compileContract and generateEVMFromIR.
@@ -643,7 +624,6 @@ private:
 
 	langutil::ErrorList m_errorList;
 	langutil::ErrorReporter m_errorReporter;
-	std::unique_ptr<experimental::Analysis> m_experimentalAnalysis;
 	bool m_metadataLiteralSources = false;
 	MetadataHash m_metadataHash = MetadataHash::IPFS;
 	langutil::DebugInfoSelection m_debugInfoSelection = langutil::DebugInfoSelection::Default();

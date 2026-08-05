@@ -224,9 +224,6 @@ bool ASTJsonExporter::visit(SourceUnit const& _node)
 		std::make_pair("nodes", toJson(_node.nodes())),
 	};
 
-	if (_node.experimentalSolidity())
-		attributes.emplace_back("experimentalSolidity", Json(_node.experimentalSolidity()));
-
 	if (_node.annotation().exportedSymbols.set())
 	{
 		Json exportedSymbols = Json::object();
@@ -1056,12 +1053,9 @@ void ASTJsonExporter::endVisit(EventDefinition const&)
 	m_inEvent = false;
 }
 
-bool ASTJsonExporter::visitNode(ASTNode const& _node)
+bool ASTJsonExporter::visitNode(ASTNode const&)
 {
-	solAssert(false, _node.experimentalSolidityOnly() ?
-		"Attempt to export an AST of experimental solidity." :
-		"Attempt to export an AST that contains unexpected nodes."
-	);
+	solAssert(false, "Attempt to export an AST that contains unexpected nodes.");
 	return false;
 }
 

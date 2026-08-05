@@ -76,7 +76,6 @@ private:
 		Visibility visibility = Visibility::Default;
 		StateMutability stateMutability = StateMutability::NonPayable;
 		std::vector<ASTPointer<ModifierInvocation>> modifiers;
-		ASTPointer<Expression> experimentalReturnExpression;
 	};
 
 	/// Struct to share parsed function call arguments.
@@ -91,7 +90,7 @@ private:
 	///@name Parsing functions for the AST nodes
 	void parsePragmaVersion(langutil::SourceLocation const& _location, std::vector<Token> const& _tokens, std::vector<std::string> const& _literals);
 	ASTPointer<StructuredDocumentation> parseStructuredDocumentation();
-	ASTPointer<PragmaDirective> parsePragmaDirective(bool _finishedParsingTopLevelPragmas);
+	ASTPointer<PragmaDirective> parsePragmaDirective();
 	ASTPointer<ImportDirective> parseImportDirective();
 	/// @returns an std::pair<ContractKind, bool>, where
 	/// result.second is set to true, if an abstract contract was parsed, false otherwise.
@@ -102,7 +101,6 @@ private:
 	ASTPointer<OverrideSpecifier> parseOverrideSpecifier();
 	StateMutability parseStateMutability();
 	FunctionHeaderParserResult parseFunctionHeader(bool _isStateVariable);
-	ASTPointer<ForAllQuantifier> parseQuantifiedFunctionDefinition();
 	ASTPointer<FunctionDefinition> parseFunctionDefinition(bool _freeFunction = false, bool _allowBody = true);
 	ASTPointer<StructDefinition> parseStructDefinition();
 	ASTPointer<EnumDefinition> parseEnumDefinition();
@@ -174,18 +172,6 @@ private:
 	///@}
 
 	///@{
-	///@name Specialized parsing functions for the AST nodes of experimental solidity.
-	ASTPointer<VariableDeclarationStatement> parsePostfixVariableDeclarationStatement(
-		ASTPointer<ASTString> const& _docString
-	);
-	ASTPointer<VariableDeclaration> parsePostfixVariableDeclaration();
-	ASTPointer<TypeClassDefinition> parseTypeClassDefinition();
-	ASTPointer<TypeClassInstantiation> parseTypeClassInstantiation();
-	ASTPointer<TypeDefinition> parseTypeDefinition();
-	ASTPointer<TypeClassName> parseTypeClassName();
-	///@}
-
-	///@{
 	///@name Helper functions
 
 	/// @return true if we are at the start of a variable declaration.
@@ -237,11 +223,6 @@ private:
 	///@}
 
 	bool isQuotedPath() const;
-	bool isStdlibPath() const;
-
-	int tokenPrecedence(Token _token) const;
-
-	ASTPointer<ASTString> getStdlibImportPathAndAdvance();
 
 	/// Creates an empty ParameterList at the current location (used if parameters can be omitted).
 	ASTPointer<ParameterList> createEmptyParameterList();
@@ -251,8 +232,6 @@ private:
 	langutil::EVMVersion m_evmVersion;
 	/// Counter for the next AST node ID
 	int64_t m_currentNodeID = 0;
-	/// Flag that indicates whether experimental mode is enabled in the current source unit
-	bool m_experimentalSolidityEnabledInCurrentSourceUnit = false;
 };
 
 }

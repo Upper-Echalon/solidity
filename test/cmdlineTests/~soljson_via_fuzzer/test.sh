@@ -10,7 +10,7 @@ cd "$SOLTMPDIR"
 "$REPO_ROOT"/scripts/isolate_tests.py "$REPO_ROOT"/test/
 "$REPO_ROOT"/scripts/isolate_tests.py "$REPO_ROOT"/docs/
 
-gnu_grep -L --include="*.sol" "^pragma experimental solidity;$" ./* | xargs -P 4 -n 50 "${SOLIDITY_BUILD_DIR}/test/tools/solfuzzer" --quiet --input-files
-gnu_grep -L --include="*.sol" "^pragma experimental solidity;$" ./* | xargs -P 4 -n 50 "${SOLIDITY_BUILD_DIR}/test/tools/solfuzzer" --without-optimizer --quiet --input-files
+find . -maxdepth 1 -name "*.sol" -print0 | xargs -0 -P 4 -n 50 "${SOLIDITY_BUILD_DIR}/test/tools/solfuzzer" --quiet --input-files
+find . -maxdepth 1 -name "*.sol" -print0 | xargs -0 -P 4 -n 50 "${SOLIDITY_BUILD_DIR}/test/tools/solfuzzer" --without-optimizer --quiet --input-files
 
 rm -r "$SOLTMPDIR"

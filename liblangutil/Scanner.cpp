@@ -665,7 +665,7 @@ void Scanner::scanToken()
 		case '.':
 			// . Number
 			advance();
-			if (m_kind != ScannerKind::ExperimentalSolidity && isDecimalDigit(m_char))
+			if (isDecimalDigit(m_char))
 				token = scanNumber('.');
 			else
 				token = Token::Period;
@@ -1044,9 +1044,6 @@ std::tuple<Token, unsigned, unsigned> Scanner::scanIdentifierOrKeyword()
 		// there are no keywords in special comments
 		return std::make_tuple(Token::Identifier, 0, 0);
 	case ScannerKind::Solidity:
-		// Turn experimental Solidity keywords that are not keywords in legacy Solidity into identifiers.
-		if (TokenTraits::isExperimentalSolidityOnlyKeyword(std::get<0>(token)))
-			return std::make_tuple(Token::Identifier, 0, 0);
 		break;
 	case ScannerKind::Yul:
 		// Turn Solidity identifier into a Yul keyword
@@ -1054,11 +1051,6 @@ std::tuple<Token, unsigned, unsigned> Scanner::scanIdentifierOrKeyword()
 			return std::make_tuple(Token::Leave, 0, 0);
 		// Turn non-Yul keywords into identifiers.
 		if (!TokenTraits::isYulKeyword(std::get<0>(token)))
-			return std::make_tuple(Token::Identifier, 0, 0);
-		break;
-	case ScannerKind::ExperimentalSolidity:
-		// Turn legacy Solidity keywords that are not keywords in experimental Solidity into identifiers.
-		if (!TokenTraits::isExperimentalSolidityKeyword(std::get<0>(token)))
 			return std::make_tuple(Token::Identifier, 0, 0);
 		break;
 	}

@@ -82,8 +82,6 @@ set(libsolidity_sources
     libsolidity/ErrorCheck.h
     libsolidity/EthdebugTest.cpp
     libsolidity/EthdebugTest.h
-    libsolidity/FunctionDependencyGraphTest.cpp
-    libsolidity/FunctionDependencyGraphTest.h
     libsolidity/GasCosts.cpp
     libsolidity/GasMeter.cpp
     libsolidity/GasTest.cpp
