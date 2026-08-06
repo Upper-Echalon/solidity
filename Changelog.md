@@ -2,6 +2,8 @@
 
 Language Features:
 * Custom Storage Layout: Allow signed positive expressions.
+* EVM: Support `block.slotnum` to access the beacon chain slot number of the current block, available since the Amsterdam EVM version ([EIP-7843](https://eips.ethereum.org/EIPS/eip-7843)).
+* Yul: Introduce builtin `slotnum()` for the `SLOTNUM` opcode, available since the Amsterdam EVM version ([EIP-7843](https://eips.ethereum.org/EIPS/eip-7843)).
 
 Compiler Features:
 * Commandline Interface: Remove support for the experimental Language Server Protocol (LSP) mode.

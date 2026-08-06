@@ -1958,6 +1958,8 @@ void IRGeneratorForStatements::endVisit(MemberAccess const& _memberAccess)
 			define(_memberAccess) << "basefee()\n";
 		else if (member == "blobbasefee")
 			define(_memberAccess) << "blobbasefee()\n";
+		else if (member == "slotnum")
+			define(_memberAccess) << "slotnum()\n";
 		else if (member == "data")
 		{
 			IRVariable var(_memberAccess);

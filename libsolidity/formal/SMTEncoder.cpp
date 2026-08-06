@@ -1412,6 +1412,16 @@ bool SMTEncoder::visit(MemberAccess const& _memberAccess)
 
 	if (exprType->category() == Type::Category::Magic)
 	{
+		auto defineTxMember = [&](std::string const& _fullName) {
+			if (state().hasTxMember(_fullName))
+				defineExpr(_memberAccess, state().txMember(_fullName));
+			else
+				m_unsupportedErrors.warning(
+					2350_error,
+					_memberAccess.location(),
+					"Assertion checker does not yet support this expression."
+				);
+		};
 		if (auto const* identifier = dynamic_cast<Identifier const*>(&memberExpr))
 		{
 			auto const& name = identifier->name();
@@ -1422,16 +1432,16 @@ bool SMTEncoder::visit(MemberAccess const& _memberAccess)
 			if (name == "block" && memberName == "difficulty")
 				memberName = "prevrandao";
 
-			defineExpr(_memberAccess, state().txMember(name + "." + memberName));
+			defineTxMember(name + "." + memberName);
 		}
 		else if (auto magicType = dynamic_cast<MagicType const*>(exprType))
 		{
 			if (magicType->kind() == MagicType::Kind::Block)
-				defineExpr(_memberAccess, state().txMember("block." + _memberAccess.memberName()));
+				defineTxMember("block." + _memberAccess.memberName());
 			else if (magicType->kind() == MagicType::Kind::Message)
-				defineExpr(_memberAccess, state().txMember("msg." + _memberAccess.memberName()));
+				defineTxMember("msg." + _memberAccess.memberName());
 			else if (magicType->kind() == MagicType::Kind::Transaction)
-				defineExpr(_memberAccess, state().txMember("tx." + _memberAccess.memberName()));
+				defineTxMember("tx." + _memberAccess.memberName());
 			else if (magicType->kind() == MagicType::Kind::MetaType)
 			{
 				auto const& memberName = _memberAccess.memberName();

@@ -55,6 +55,8 @@ bool EVMVersion::hasOpcode(Instruction _opcode) const
 		return hasBlobHash();
 	case Instruction::BLOBBASEFEE:
 		return hasBlobBaseFee();
+	case Instruction::SLOTNUM:
+		return hasSlotNum();
 	case Instruction::MCOPY:
 		return hasMcopy();
 	case Instruction::TSTORE:

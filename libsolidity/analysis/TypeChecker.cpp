@@ -3452,6 +3452,12 @@ bool TypeChecker::visit(MemberAccess const& _memberAccess)
 					_memberAccess.location(),
 					R"("blobbasefee" is not supported by the VM version.)"
 				);
+			else if (memberName == "slotnum" && !m_evmVersion.hasSlotNum())
+				m_errorReporter.typeError(
+					1048_error,
+					_memberAccess.location(),
+					R"("slotnum" is not supported by the VM version.)"
+				);
 			else if (memberName == "prevrandao" && !m_evmVersion.hasPrevRandao())
 				m_errorReporter.warning(
 					9432_error,

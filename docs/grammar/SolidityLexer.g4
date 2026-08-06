@@ -308,7 +308,7 @@ YulEVMBuiltin:
 	| 'delegatecall' | 'staticcall' | 'return' | 'revert' | 'selfdestruct' | 'invalid'
 	| 'log0' | 'log1' | 'log2' | 'log3' | 'log4' | 'chainid' | 'origin' | 'gasprice'
 	| 'blockhash' | 'blobhash' | 'coinbase' | 'timestamp' | 'number' | 'difficulty'
-	| 'prevrandao' | 'gaslimit' | 'basefee' | 'blobbasefee';
+	| 'prevrandao' | 'gaslimit' | 'basefee' | 'blobbasefee' | 'slotnum';
 
 YulLBrace: '{' -> pushMode(YulMode);
 YulRBrace: '}' -> popMode;

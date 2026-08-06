@@ -802,6 +802,14 @@ void ProtoConverter::visit(NullaryOp const& _x)
 		else
 			m_output << dictionaryToken();
 		break;
+	case NullaryOp::SLOTNUM:
+		// Replace calls to slotnum() on unsupported EVMs with a dictionary
+		// token.
+		if (m_evmVersion.hasSlotNum())
+			m_output << "slotnum()";
+		else
+			m_output << dictionaryToken();
+		break;
 	}
 }
 

@@ -753,6 +753,8 @@ bool AsmAnalyzer::validateInstructions(evmasm::Instruction _instr, SourceLocatio
 		errorForVM(5430_error, "only available for London-compatible");
 	else if (_instr == evmasm::Instruction::BLOBBASEFEE && !m_evmVersion.hasBlobBaseFee())
 		errorForVM(6679_error, "only available for Cancun-compatible");
+	else if (_instr == evmasm::Instruction::SLOTNUM && !m_evmVersion.hasSlotNum())
+		errorForVM(1049_error, "only available for Amsterdam-compatible");
 	else if (_instr == evmasm::Instruction::BLOBHASH && !m_evmVersion.hasBlobHash())
 		errorForVM(8314_error, "only available for Cancun-compatible");
 	else if (_instr == evmasm::Instruction::MCOPY && !m_evmVersion.hasMcopy())

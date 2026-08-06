@@ -1992,6 +1992,8 @@ bool ExpressionCompiler::visit(MemberAccess const& _memberAccess)
 			m_context << Instruction::BASEFEE;
 		else if (member == "blobbasefee")
 			m_context << Instruction::BLOBBASEFEE;
+		else if (member == "slotnum")
+			m_context << Instruction::SLOTNUM;
 		else if (member == "data")
 			m_context << u256(0) << Instruction::CALLDATASIZE;
 		else if (member == "sig")

@@ -56,7 +56,7 @@ Members of ``address``
   returns ``false`` on failure (deprecated)
 - ``<address payable>.transfer(uint256 amount)``: send given amount of Wei to :ref:`address`, throws on failure (deprecated)
 
-.. index:: blockhash, blobhash, block, block;basefee, block;blobbasefee, block;chainid, block;coinbase, block;difficulty, block;gaslimit, block;number, block;prevrandao, block;timestamp
+.. index:: blockhash, blobhash, block, block;basefee, block;blobbasefee, block;chainid, block;coinbase, block;difficulty, block;gaslimit, block;number, block;prevrandao, block;slotnum, block;timestamp
 .. index:: gasleft, msg;data, msg;sender, msg;sig, msg;value, tx;gasprice, tx;origin
 
 Block and Transaction Properties
@@ -75,6 +75,7 @@ Block and Transaction Properties
 - ``block.gaslimit`` (``uint``): current block gaslimit
 - ``block.number`` (``uint``): current block number
 - ``block.prevrandao`` (``uint``): random number provided by the beacon chain (``EVM >= Paris``) (see `EIP-4399 <https://eips.ethereum.org/EIPS/eip-4399>`_ )
+- ``block.slotnum`` (``uint64``): current beacon chain slot number (``EVM >= Amsterdam``) (see `EIP-7843 <https://eips.ethereum.org/EIPS/eip-7843>`_ )
 - ``block.timestamp`` (``uint``): current block timestamp in seconds since Unix epoch
 - ``gasleft() returns (uint256)``: remaining gas
 - ``msg.data`` (``bytes``): complete calldata

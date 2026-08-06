@@ -257,6 +257,8 @@ u256 EVMInstructionInterpreter::eval(
 		return blobHash(arg[0]);
 	case Instruction::BLOBBASEFEE:
 		return m_state.blobbasefee;
+	case Instruction::SLOTNUM:
+		return m_state.slotnum;
 	case Instruction::EXTCODESIZE:
 		return u256(keccak256(h256(arg[0]))) & 0xffffff;
 	case Instruction::EXTCODEHASH:

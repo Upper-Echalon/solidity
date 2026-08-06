@@ -132,6 +132,13 @@ std::set<std::string, std::less<>> createReservedIdentifiers(langutil::EVMVersio
 		return _instr == evmasm::Instruction::CLZ && !_evmVersion.hasCLZ();
 	};
 
+	// TODO remove this in 0.9.0. We allow creating functions or identifiers in Yul with the name
+	// slotnum for VMs before amsterdam.
+	auto slotNumException = [&](evmasm::Instruction _instr) -> bool
+	{
+		return _instr == evmasm::Instruction::SLOTNUM && !_evmVersion.hasSlotNum();
+	};
+
 	std::set<std::string, std::less<>> reserved;
 	for (auto const& instr: evmasm::c_instructions)
 	{
@@ -143,7 +150,8 @@ std::set<std::string, std::less<>> createReservedIdentifiers(langutil::EVMVersio
 			!blobBaseFeeException(instr.second) &&
 			!mcopyException(instr.second) &&
 			!transientStorageException(instr.second) &&
-			!clzException(instr.second)
+			!clzException(instr.second) &&
+			!slotNumException(instr.second)
 		)
 			reserved.emplace(name);
 	}

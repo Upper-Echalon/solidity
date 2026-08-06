@@ -67,7 +67,7 @@ There are special variables and functions which always exist in the global
 namespace and are mainly used to provide information about the blockchain
 or are general-use utility functions.
 
-.. index:: abi, block, coinbase, difficulty, prevrandao, encode, number, block;number, timestamp, block;timestamp, block;basefee, block;blobbasefee, msg, data, gas, sender, value, gas price, origin
+.. index:: abi, block, coinbase, difficulty, prevrandao, encode, number, block;number, timestamp, block;timestamp, block;basefee, block;blobbasefee, block;slotnum, msg, data, gas, sender, value, gas price, origin
 
 
 Block and Transaction Properties
@@ -86,6 +86,7 @@ Block and Transaction Properties
 - ``block.gaslimit`` (``uint``): current block gaslimit
 - ``block.number`` (``uint``): current block number
 - ``block.prevrandao`` (``uint``): random number provided by the beacon chain (``EVM >= Paris``)
+- ``block.slotnum`` (``uint64``): current beacon chain slot number (`EIP-7843 <https://eips.ethereum.org/EIPS/eip-7843>`_, ``EVM >= Amsterdam``)
 - ``block.timestamp`` (``uint``): current block timestamp as seconds since unix epoch
 - ``gasleft() returns (uint256)``: remaining gas
 - ``msg.data`` (``bytes calldata``): complete calldata
@@ -442,5 +443,5 @@ These keywords are reserved in Solidity. They might become part of the syntax in
     ``at``, ``error``, ``layout``, ``leave``, ``super``, ``transient``, ``this``.
 
     There are also names which will be considered Yul reserved identifiers in the future:
-    ``basefee``, ``blobbasefee``, ``blobhash``, ``clz``, ``memoryguard``, ``mcopy``, ``prevrandao``, ``tload``, ``tstore``.
+    ``basefee``, ``blobbasefee``, ``blobhash``, ``clz``, ``memoryguard``, ``mcopy``, ``prevrandao``, ``slotnum``, ``tload``, ``tstore``.
 
