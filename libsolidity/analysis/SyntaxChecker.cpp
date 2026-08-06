@@ -101,6 +101,8 @@ bool SyntaxChecker::visit(PragmaDirective const& _pragma)
 			std::string const literal = literals[0];
 			if (literal.empty())
 				m_errorReporter.syntaxError(3250_error, _pragma.location(), "Empty experimental feature name is invalid.");
+			else if (literal == "solidity")
+				m_errorReporter.syntaxError(3332_error, _pragma.location(), "The experimental Solidity prototype has been removed from the compiler.");
 			else if (!ExperimentalFeatureNames.count(literal))
 				m_errorReporter.syntaxError(8491_error, _pragma.location(), "Unsupported experimental feature name.");
 			else if (m_sourceUnit->annotation().experimentalFeatures.count(ExperimentalFeatureNames.at(literal)))
@@ -470,10 +472,6 @@ bool SyntaxChecker::visit(UsingForDirective const& _usingFor)
 
 bool SyntaxChecker::visit(FunctionDefinition const& _function)
 {
-	if (m_sourceUnit && m_sourceUnit->experimentalSolidity())
-		// Handled in experimental::SyntaxRestrictor instead.
-		return true;
-
 	if (!_function.isFree() && !_function.isConstructor() && _function.noVisibilitySpecified())
 	{
 		std::string suggestedVisibility =
@@ -528,12 +526,3 @@ bool SyntaxChecker::visit(StructDefinition const& _struct)
 	return true;
 }
 
-bool SyntaxChecker::visitNode(ASTNode const& _node)
-{
-	if (_node.experimentalSolidityOnly())
-	{
-		solAssert(m_sourceUnit);
-		solAssert(m_sourceUnit->experimentalSolidity());
-	}
-	return ASTConstVisitor::visitNode(_node);
-}

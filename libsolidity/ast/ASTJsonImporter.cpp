@@ -274,15 +274,11 @@ ASTPointer<SourceUnit> ASTJsonImporter::createSourceUnit(Json const& _node, std:
 	if (_node.contains("license") && !_node["license"].is_null())
 		license = _node["license"].get<std::string>();
 
-	bool experimentalSolidity = false;
-	if (_node.contains("experimentalSolidity") && !_node["experimentalSolidity"].is_null())
-		experimentalSolidity = _node["experimentalSolidity"].get<bool>();
-
 	std::vector<ASTPointer<ASTNode>> nodes;
 	for (auto& child: member(_node, "nodes"))
 		nodes.emplace_back(convertJsonToASTNode(child));
 
-	ASTPointer<SourceUnit> tmp = createASTNode<SourceUnit>(_node, license, nodes, experimentalSolidity);
+	ASTPointer<SourceUnit> tmp = createASTNode<SourceUnit>(_node, license, nodes);
 	tmp->annotation().path = _srcName;
 	return tmp;
 }

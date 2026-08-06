@@ -85,7 +85,7 @@ void SyntaxTest::setupCompiler(CompilerStack& _compiler)
 void SyntaxTest::parseAndAnalyze()
 {
 	runFramework(withPreamble(m_sources.sources), m_stopAfter);
-	if (!pipelineSuccessful() && stageSuccessful(PipelineStage::Analysis) && !compiler().isExperimentalAnalysis())
+	if (!pipelineSuccessful() && stageSuccessful(PipelineStage::Analysis))
 	{
 		ErrorList const& errors = compiler().errors();
 		static auto isInternalError = [](std::shared_ptr<Error const> const& _error) {

@@ -66,7 +66,6 @@ enum class ScannerKind
 {
 	Solidity,
 	Yul,
-	ExperimentalSolidity,
 	SpecialComment
 };
 

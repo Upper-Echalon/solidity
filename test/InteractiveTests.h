@@ -23,7 +23,6 @@
 #include <test/libsolidity/ASTJSONTest.h>
 #include <test/libsolidity/ASTPropertyTest.h>
 #include <test/libsolidity/EthdebugTest.h>
-#include <libsolidity/FunctionDependencyGraphTest.h>
 #include <test/libsolidity/GasTest.h>
 #include <test/libsolidity/MemoryGuardTest.h>
 #include <test/libsolidity/NatspecJSONTest.h>
@@ -102,7 +101,6 @@ Testsuite const g_interactiveTestsuites[] = {
 	{"Gas Estimates",               "libsolidity", "gasTests",                      false, false, &GasTest::create},
 	{"Memory Guard",                "libsolidity", "memoryGuardTests",              false, false, &MemoryGuardTest::create},
 	{"AST Properties",              "libsolidity", "astPropertyTests",              false, false, &ASTPropertyTest::create},
-	{"Function Dependency Graph",   "libsolidity", "functionDependencyGraphTests",  false, false, &FunctionDependencyGraphTest::create},
 	{"Optimized IR Caching",        "libsolidity", "optimizedIRCaching",            false, false, &OptimizedIRCachingTest::create},
 };
 

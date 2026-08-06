@@ -39,7 +39,6 @@ add_executable(isoltest
 	../libsolidity/ABIJsonTest.cpp
 	../libsolidity/ASTJSONTest.cpp
 	../libsolidity/ASTPropertyTest.cpp
-	../libsolidity/FunctionDependencyGraphTest.cpp
 	../libsolidity/JSONExpectationTest.cpp
 	../libsolidity/SMTCheckerTest.cpp
 	../libyul/CallGraphTest.cpp
