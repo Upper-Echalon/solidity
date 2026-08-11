@@ -11,6 +11,7 @@ Compiler Features:
 * General: Improve performance throughout the compiler using Boost's flat versions of unordered set and map.
 * General: Remove support for the experimental Generic Solidity prototype (`pragma experimental solidity`).
 * SMTChecker: Emit a deprecation warning for the BMC engine.
+* SMTChecker: Support `block.slotnum`.
 
 Bugfixes:
 * Code Generator: Fix ICE on parenthesized custom error construction in require statement.
