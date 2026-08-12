@@ -1760,8 +1760,12 @@ jobs:
               # Our main goal here is to provide new benchmarks, the diff is optional. When benchmarks from
               # the previous run are not available for whatever reason, we still succeed and just skip the diff.
               # download_benchmarks.py exits with status 2 in that case.
-              if "${scripts_dir}/externalTests/download_benchmarks.py" --base-of-pr "$pr_id" || [[ $? == 2 ]]; then
+              exit_code=0
+              "${scripts_dir}/externalTests/download_benchmarks.py" --base-of-pr "$pr_id" || exit_code=$?
+              if [[ $exit_code == 2 ]]; then
                 echo 'export SKIP_BENCHMARK_DIFF=true' >> $BASH_ENV
+              elif [[ $exit_code != 0 ]]; then
+                exit $exit_code
               fi
             fi
       - run:
@@ -1790,6 +1794,10 @@ jobs:
                 --style absolute \
                 base-branch/all-benchmarks-*.json \
                 all-benchmarks.json > diff/benchmark-diff-all-table-inplace-absolute.md
+            elif [[ $CIRCLE_PULL_REQUEST == "" ]]; then
+              echo "Skipping benchmark diff: not running on a pull request."
+            else
+              echo "Skipping benchmark diff: benchmarks for the base branch are not available."
             fi
       - store_artifacts:
           path: reports/externalTests/diff/
