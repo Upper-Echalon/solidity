@@ -121,6 +121,11 @@ class CircleCI:
             json_response = query_api(url, params, headers, self.debug_requests)
 
             yield json_response['items']
+            if 'next_page_token' not in json_response:
+                raise APIHelperError(
+                    f"API response for {url} with params {params} is missing the 'next_page_token' key: "
+                    f"{json_response}"
+                )
             next_page_token = json_response['next_page_token']
             page_count += 1
             if next_page_token is None:
