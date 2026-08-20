@@ -951,11 +951,12 @@ private:
 		yulAssert(!_stack.empty(), "Stack is empty, can't shrink");
 
 		StackOffset const stackTop{_stack.size() - 1};
-		// pop top if it is junk (ie actual junk, not in args, not in live out) or spilled
+		// pop top if it is junk (ie actual junk, not in args, not in live out)
+		// a spilled top that is still required is deliberately not popped eagerly:
+	    // an eager pop just forces a reload of the same value (potentially oscillating against the reload in fixArgsSlot)
 		if (
 			_stack[stackTop].isJunk() ||
-			(!_state.requiredInArgs(_stack[stackTop]) && !_state.requiredInTail(_stack[stackTop])) ||
-			_state.slotIsSpilled(_stack[stackTop])
+			(!_state.requiredInArgs(_stack[stackTop]) && !_state.requiredInTail(_stack[stackTop]))
 		)
 		{
 			_stack.pop();
@@ -1017,16 +1018,16 @@ private:
 				bool const isJunk = slot.isJunk();
 				bool const hasSurplus = _state.count(slot) > _state.targetMinCount(slot);
 				bool const hasReachableDuplicate = _state.countReachable(slot) > 1;
-				bool const freelyGeneratable = canBeFreelyGenerated(slot);
+				bool const regenerable = _state.slotCanBeLoadedOrPushed(slot);
 				bool const isLit = slot.isLiteralValue();
 
 				if (isJunk && notInPosition)
 					return 5;
-				if (freelyGeneratable && !isLit && notInPosition)
+				if (regenerable && !isLit && notInPosition)
 					return 4;
 				if (hasSurplus)
 					return 3;
-				if (freelyGeneratable)
+				if (regenerable)
 					return 2;
 				if (hasReachableDuplicate)
 					return 1;
