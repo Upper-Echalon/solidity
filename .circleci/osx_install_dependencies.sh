@@ -47,15 +47,16 @@ function validate_checksum {
 
 # Disable automatic `brew cleanup` after every install command. Unnecessary on CI machines.
 export HOMEBREW_NO_INSTALL_CLEANUP=1
-brew install cmake
-brew install ccache
-brew install wget
-brew install coreutils
-brew install diffutils
-brew install grep
 # JRE is required to run eldarica solver
-brew install openjdk@11
-brew install unzip
+brew install \
+    cmake \
+    ccache \
+    wget \
+    coreutils \
+    diffutils \
+    grep \
+    openjdk@11 \
+    unzip
 
 # boost
 if [[ ! -f /opt/boost/include/boost/version.hpp ]]
