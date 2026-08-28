@@ -467,46 +467,13 @@ commands:
       - matrix_notify_failure_unless_pr
 
   install_dependencies_osx:
-    # An extra cache key is used to only save the flag that communicates whether the cache exists.
-    # if this flag was set (the cache exist) we remove all files located in /usr/local & /opt/homebrew.
-    # With this simple trick restoring the cache is much faster. Otherwise CircleCI is generating
-    # warning messages if a file from the cache is overwriting an already existing file on disk.
-    # Restoring the cache is much faster if we remove all potentially conflicting files beforehand.
     steps:
-      - restore_cache:
-          keys:
-            - macos-dependencies-cached-{{ arch }}-{{ checksum ".circleci/osx_install_dependencies.sh" }}
       - run:
-          name: Installing dependencies / Restoring dependency cache
+          name: Ensure boost directory has correct permissions for restoring from cache
           command: |
-            if [[ -f ~/macos-dependencies-cached ]]; then
-              echo "Dependency flag exists. Removing /usr/local/, /opt/homebrew/, and /opt/boost. These directories will be restored from cache."
-
-              # CircleCI is providing the circleci cli tools via some kind of symlink magic.
-              # So we just save the original symlinks and restore them later.
-              circleci_binary_path=$(command -v circleci)
-              circleci_agent_binary_path=$(command -v circleci-agent)
-              cp "${circleci_binary_path}" /tmp/circleci
-              cp "${circleci_agent_binary_path}" /tmp/circleci-agent
-
-              # Homebrew is installed in /usr/local on intel macs, but in /opt/homebrew on apple silicon.
-              if [[ -d /opt/homebrew ]]; then
-                sudo rm -rf /opt/homebrew
-                sudo mkdir -p /opt/homebrew/bin
-                sudo chmod 777 /opt/{homebrew,homebrew/bin}
-              fi
-              # under macos /usr/local itself is read-only, so we just remove its sub-directories.
-              sudo rm -rf /usr/local/*
-              sudo mkdir -p /usr/local/bin
-              sudo chmod 777 /usr/{local,local/bin}
-
-              sudo rm -rf /opt/boost
-              sudo mkdir -p /opt/boost
-              sudo chmod 777 /opt/boost
-
-              mv /tmp/circleci "${circleci_binary_path}"
-              mv /tmp/circleci-agent "${circleci_agent_binary_path}"
-            fi
+            sudo rm -rf /opt/boost
+            sudo mkdir -p /opt/boost
+            sudo chmod 777 /opt/boost
       - restore_cache:
           keys:
             - macos-dependencies-{{ arch }}-{{ checksum ".circleci/osx_install_dependencies.sh" }}
@@ -515,20 +482,11 @@ commands:
       - run:
           name: Install build dependencies
           command: .circleci/osx_install_dependencies.sh
-      - run:
-          name: Mark dependencies as cached
-          command: touch ~/macos-dependencies-cached
       - save_cache:
           key: macos-dependencies-{{ arch }}-{{ checksum ".circleci/osx_install_dependencies.sh" }}
+          # NOTE: `osx_install_dependencies.sh` installs more than boost, but we intentionally cache only boost, which takes the most time to install.
           paths:
-            # Homebrew is installed in /usr/local on intel macs, but in /opt/homebrew on apple silicon.
-            - /usr/local
-            - /opt/homebrew
             - /opt/boost
-      - save_cache:
-          key: macos-dependencies-cached-{{ arch }}-{{ checksum ".circleci/osx_install_dependencies.sh" }}
-          paths:
-            - ~/macos-dependencies-cached
 
 defaults:
 
