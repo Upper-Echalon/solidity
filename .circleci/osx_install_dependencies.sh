@@ -45,8 +45,8 @@ function validate_checksum {
   fi
 }
 
-brew update
-brew upgrade
+# Disable automatic `brew cleanup` after every install command. Unnecessary on CI machines.
+export HOMEBREW_NO_INSTALL_CLEANUP=1
 brew install cmake
 brew install ccache
 brew install wget
