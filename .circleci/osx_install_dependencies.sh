@@ -31,18 +31,18 @@
 set -eu
 
 function validate_checksum {
-  local package="$1"
-  local expected_checksum="$2"
+    local package="$1"
+    local expected_checksum="$2"
 
-  local actual_checksum
-  actual_checksum=$(sha256sum "$package")
-  if [[ $actual_checksum != "${expected_checksum}  ${package}" ]]
-  then
-    >&2 echo "ERROR: Wrong checksum for package $package."
-    >&2 echo "Actual:   $actual_checksum"
-    >&2 echo "Expected: $expected_checksum"
-    exit 1
-  fi
+    local actual_checksum
+    actual_checksum=$(sha256sum "$package")
+    if [[ $actual_checksum != "${expected_checksum}  ${package}" ]]
+    then
+        >&2 echo "ERROR: Wrong checksum for package $package."
+        >&2 echo "Actual:   $actual_checksum"
+        >&2 echo "Expected: $expected_checksum"
+        exit 1
+    fi
 }
 
 # Disable automatic `brew cleanup` after every install command. Unnecessary on CI machines.
@@ -61,19 +61,19 @@ brew install \
 # boost
 if [[ ! -f /opt/boost/include/boost/version.hpp ]]
 then
-  boost_version="1.84.0"
-  boost_package="boost_${boost_version//./_}.tar.bz2"
-  boost_dir="boost_${boost_version//./_}"
-  wget "https://archives.boost.io/release/$boost_version/source/$boost_package"
-  tar xf "$boost_package"
-  rm "$boost_package"
-  cd "$boost_dir"
-  ./bootstrap.sh --with-toolset=clang --with-libraries=thread,system,filesystem,program_options,serialization,test
-  # the default number of jobs that b2 is taking, is the number of detected available CPU threads.
-  # install boost to /opt/boost, to use it in CMake, specify Boost_ROOT
-  sudo ./b2 -a address-model=64 architecture=arm+x86 --prefix=/opt/boost install
-  cd ..
-  sudo rm -rf "$boost_dir"
+    boost_version="1.84.0"
+    boost_package="boost_${boost_version//./_}.tar.bz2"
+    boost_dir="boost_${boost_version//./_}"
+    wget "https://archives.boost.io/release/$boost_version/source/$boost_package"
+    tar xf "$boost_package"
+    rm "$boost_package"
+    cd "$boost_dir"
+    ./bootstrap.sh --with-toolset=clang --with-libraries=thread,system,filesystem,program_options,serialization,test
+    # the default number of jobs that b2 is taking, is the number of detected available CPU threads.
+    # install boost to /opt/boost, to use it in CMake, specify Boost_ROOT
+    sudo ./b2 -a address-model=64 architecture=arm+x86 --prefix=/opt/boost install
+    cd ..
+    sudo rm -rf "$boost_dir"
 fi
 
 # eldarica
