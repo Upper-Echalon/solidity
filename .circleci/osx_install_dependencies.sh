@@ -26,8 +26,7 @@
 # ------------------------------------------------------------------------------
 
 # note that the following directories may be cached by circleci:
-# - /usr/local
-# - /opt/homebrew
+# - /opt/boost
 
 set -eu
 
@@ -46,21 +45,21 @@ function validate_checksum {
   fi
 }
 
-if [ ! -f /usr/local/bin/z3 ] # if this file does not exists (cache was not restored), rebuild dependencies
-then
-  brew update
-  brew upgrade
-  brew install cmake
-  brew install ccache
-  brew install wget
-  brew install coreutils
-  brew install diffutils
-  brew install grep
-  # JRE is required to run eldarica solver
-  brew install openjdk@11
-  brew install unzip
+brew update
+brew upgrade
+brew install cmake
+brew install ccache
+brew install wget
+brew install coreutils
+brew install diffutils
+brew install grep
+# JRE is required to run eldarica solver
+brew install openjdk@11
+brew install unzip
 
-  # boost
+# boost
+if [[ ! -f /opt/boost/include/boost/version.hpp ]]
+then
   boost_version="1.84.0"
   boost_package="boost_${boost_version//./_}.tar.bz2"
   boost_dir="boost_${boost_version//./_}"
@@ -74,36 +73,36 @@ then
   sudo ./b2 -a address-model=64 architecture=arm+x86 --prefix=/opt/boost install
   cd ..
   sudo rm -rf "$boost_dir"
-
-  # eldarica
-  eldarica_version="2.1"
-  wget "https://github.com/uuverifiers/eldarica/releases/download/v${eldarica_version}/eldarica-bin-${eldarica_version}.zip" -O /tmp/eld_binaries.zip
-  validate_checksum /tmp/eld_binaries.zip 0ac43f45c0925383c9d2077f62bbb515fd792375f3b2b101b30c9e81dcd7785c
-  unzip /tmp/eld_binaries.zip -d /tmp
-  sudo mv /tmp/eldarica/{eld,eld-client,target,eldEnv} /usr/local/bin
-  rm -rf /tmp/{eldarica,eld_binaries.zip}
-
-  #cvc5
-  cvc5_version="1.2.0"
-  cvc5_archive_name="cvc5-macOS-arm64-static"
-  wget "https://github.com/cvc5/cvc5/releases/download/cvc5-${cvc5_version}/${cvc5_archive_name}.zip" -O /tmp/cvc5.zip
-  validate_checksum /tmp/cvc5.zip 57d2d4855af3f3865110a254e415098b4e150a655f297010e27eb292f48f7da7
-  sudo unzip -j /tmp/cvc5.zip "${cvc5_archive_name}/bin/cvc5" -d /usr/local/bin
-  rm -f /tmp/cvc5.zip
-
-  # z3
-  z3_version="4.13.3"
-  z3_archive_name="z3-${z3_version}-arm64-osx-13.7"
-  wget "https://github.com/Z3Prover/z3/releases/download/z3-${z3_version}/${z3_archive_name}.zip" -O /tmp/z3.zip
-  validate_checksum /tmp/z3.zip 2b2c6e23ff5488722bc93002e04c6d6f60d621af9d345f2e05a8691b40280e53
-  sudo unzip -j /tmp/z3.zip "${z3_archive_name}/bin/z3" -d /usr/local/bin
-  rm -f /tmp/z3.zip
-
-  # evmone
-  evmone_version="0.22.0"
-  evmone_package="evmone-${evmone_version}-darwin-arm64.tar.gz"
-  wget "https://github.com/ipsilon/evmone/releases/download/v${evmone_version}/${evmone_package}"
-  validate_checksum "$evmone_package" 3ff5633e49ae3726dc094c7c9819440c11d04c8036bc27f45a4385120951599c
-  sudo tar xzpf "$evmone_package" -C /usr/local
-  rm "$evmone_package"
 fi
+
+# eldarica
+eldarica_version="2.1"
+wget "https://github.com/uuverifiers/eldarica/releases/download/v${eldarica_version}/eldarica-bin-${eldarica_version}.zip" -O /tmp/eld_binaries.zip
+validate_checksum /tmp/eld_binaries.zip 0ac43f45c0925383c9d2077f62bbb515fd792375f3b2b101b30c9e81dcd7785c
+unzip /tmp/eld_binaries.zip -d /tmp
+sudo mv /tmp/eldarica/{eld,eld-client,target,eldEnv} /usr/local/bin
+rm -rf /tmp/{eldarica,eld_binaries.zip}
+
+#cvc5
+cvc5_version="1.2.0"
+cvc5_archive_name="cvc5-macOS-arm64-static"
+wget "https://github.com/cvc5/cvc5/releases/download/cvc5-${cvc5_version}/${cvc5_archive_name}.zip" -O /tmp/cvc5.zip
+validate_checksum /tmp/cvc5.zip 57d2d4855af3f3865110a254e415098b4e150a655f297010e27eb292f48f7da7
+sudo unzip -j /tmp/cvc5.zip "${cvc5_archive_name}/bin/cvc5" -d /usr/local/bin
+rm -f /tmp/cvc5.zip
+
+# z3
+z3_version="4.13.3"
+z3_archive_name="z3-${z3_version}-arm64-osx-13.7"
+wget "https://github.com/Z3Prover/z3/releases/download/z3-${z3_version}/${z3_archive_name}.zip" -O /tmp/z3.zip
+validate_checksum /tmp/z3.zip 2b2c6e23ff5488722bc93002e04c6d6f60d621af9d345f2e05a8691b40280e53
+sudo unzip -j /tmp/z3.zip "${z3_archive_name}/bin/z3" -d /usr/local/bin
+rm -f /tmp/z3.zip
+
+# evmone
+evmone_version="0.22.0"
+evmone_package="evmone-${evmone_version}-darwin-arm64.tar.gz"
+wget "https://github.com/ipsilon/evmone/releases/download/v${evmone_version}/${evmone_package}"
+validate_checksum "$evmone_package" 3ff5633e49ae3726dc094c7c9819440c11d04c8036bc27f45a4385120951599c
+sudo tar xzpf "$evmone_package" -C /usr/local
+rm "$evmone_package"
