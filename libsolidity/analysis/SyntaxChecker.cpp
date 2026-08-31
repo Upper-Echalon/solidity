@@ -125,6 +125,11 @@ bool SyntaxChecker::visit(PragmaDirective const& _pragma)
 
 				if (feature == ExperimentalFeature::ABIEncoderV2)
 				{
+					m_errorReporter.warning(
+						8506_error,
+						_pragma.location(),
+						"Experimental pragma ABIEncoderV2 is deprecated and will be removed in a future release."
+					);
 					if (m_sourceUnit->annotation().useABICoderV2.set())
 					{
 						if (!*m_sourceUnit->annotation().useABICoderV2)
