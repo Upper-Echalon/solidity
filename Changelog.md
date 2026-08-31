@@ -1,7 +1,6 @@
 ### 0.8.37 (unreleased)
 
 Language Features:
-* ABIEncoder: Remove support for the experimental pragma `ABIEncoderV2`. This has been superseded by non-experimental pragma `abicoder`.
 * Custom Storage Layout: Allow signed positive expressions.
 * EVM: Support `block.slotnum` to access the beacon chain slot number of the current block, available since the Amsterdam EVM version ([EIP-7843](https://eips.ethereum.org/EIPS/eip-7843)).
 * Yul: Introduce builtin `slotnum()` for the `SLOTNUM` opcode, available since the Amsterdam EVM version ([EIP-7843](https://eips.ethereum.org/EIPS/eip-7843)).
