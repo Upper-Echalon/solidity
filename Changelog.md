@@ -13,6 +13,8 @@ Compiler Features:
 * SMTChecker: Emit a deprecation warning for the BMC engine.
 * SMTChecker: Support `block.slotnum`.
 * Standard JSON Interface: Fix the entire output being replaced by a `JSONError` ("Error writing output JSON.") when an error message quotes a long source line and truncating it splits a multi-byte character.
+* Yul Optimizer: `LoopInvariantCodeMotion` can now move expressions depending on function parameters out of loops.
+* Yul Optimizer: `UnusedStoreEliminator` can now recognize redundant memory and storage operations whose start offset or length is a function parameter.
 
 Bugfixes:
 * Code Generator: Fix ICE on parenthesized custom error construction in require statement.
