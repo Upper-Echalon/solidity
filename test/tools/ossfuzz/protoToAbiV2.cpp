@@ -745,7 +745,8 @@ std::string ProtoConverter::commonHelperFunctions()
 
 void ProtoConverter::visit(Contract const& _x)
 {
-	std::string pragmas = R"(pragma solidity >=0.0;)";
+	std::string pragmas = R"(pragma solidity >=0.0;
+pragma experimental ABIEncoderV2;)";
 
 	// Record test spec
 	m_test = _x.test();
