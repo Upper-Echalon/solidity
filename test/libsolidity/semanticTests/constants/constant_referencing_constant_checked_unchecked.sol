@@ -1,0 +1,14 @@
+uint8 constant B = uint8(200) + 200;
+uint8 constant A = B;
+
+contract C {
+    // B is never read from an unchecked block, but the unchecked read of A
+    // requests B's value transitively.
+    function a() external pure returns (uint8) { unchecked { return A; } }
+    function b() external pure returns (uint8) { return B; }
+}
+// ====
+// compileViaYul: true
+// ----
+// a() -> 0x90
+// b() -> 0x90

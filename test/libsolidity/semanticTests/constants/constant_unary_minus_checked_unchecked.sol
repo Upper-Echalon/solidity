@@ -1,0 +1,11 @@
+int8 constant x = -int8(-128);
+
+contract C {
+    function a() external pure returns (int8) { return x; }
+    function b() external pure returns (int8) { unchecked { return x; } }
+}
+// ====
+// compileViaYul: true
+// ----
+// a() -> FAILURE, hex"4e487b71", 0x11
+// b() -> FAILURE, hex"4e487b71", 0x11
