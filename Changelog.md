@@ -15,12 +15,14 @@ Compiler Features:
 * Standard JSON Interface: Fix the entire output being replaced by a `JSONError` ("Error writing output JSON.") when an error message quotes a long source line and truncating it splits a multi-byte character.
 * Yul Optimizer: `LoopInvariantCodeMotion` can now move expressions depending on function parameters out of loops.
 * Yul Optimizer: `UnusedStoreEliminator` can now recognize redundant memory and storage operations whose start offset or length is a function parameter.
+* Yul Optimizer: Remove the ineffective elimination of unused `returndatacopy()` operations in simple cases from UnusedStoreEliminator.
 
 Bugfixes:
 * Code Generator: Fix ICE on parenthesized custom error construction in require statement.
 * Code Generator: Fix uninitialized internal function pointers being read from a packed storage slot with the wrong value when a subsequent variable in the slot holds a non-zero value.
 * Commandline Interface: Report proper error instead of ICE on non-hex mixed-case address value given via `--libraries`.
 * Type Checker: Report an unimplemented feature error instead of ICE when a variable of a fixed point type is accessed in inline assembly.
+* Yul Optimizer: Fix incorrect removal of `returndatacopy()` operations referencing a stale result of `returndatasize()`.
 
 Build System:
 * Update minimum version requirement of Boost to 1.83.0 for Windows build. This matches the minimum version for other systems.
