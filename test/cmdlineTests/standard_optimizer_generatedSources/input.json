@@ -6,7 +6,6 @@
   }
  },
  "settings": {
-  "evmVersion": "petersburg",
   "optimizer": { "enabled": true },
   "outputSelection": {
    "*": {

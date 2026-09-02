@@ -6,7 +6,6 @@
   }
  },
  "settings": {
-  "evmVersion": "petersburg",
   "outputSelection": {
    "*": {
     "A": [

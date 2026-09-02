@@ -9,7 +9,6 @@
   }
  },
  "settings": {
-  "evmVersion": "petersburg",
   "outputSelection": {
    "*": {
     "A2": [
