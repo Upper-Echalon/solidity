@@ -354,12 +354,10 @@ std::string IRGeneratorForStatements::constantValueFunction(VariableDeclaration 
 			IRGeneratorForStatements generator(m_context, m_utils, m_optimiserSettings);
 			// The constant's expression is re-evaluated at each use site and must use the
 			// arithmetic mode of the context it is referenced from.
-			Arithmetic previousArithmetic = m_context.arithmetic();
-			m_context.setArithmetic(_arithmetic);
+			generator.m_currentArithmeticMode = _arithmetic;
 			solAssert(_constant.value());
 			Type const& constantType = *_constant.type();
 			templ("value", generator.evaluateExpression(*_constant.value(), constantType).commaSeparatedList());
-			m_context.setArithmetic(previousArithmetic);
 			templ("code", generator.code());
 			templ("ret", IRVariable("ret", constantType).commaSeparatedList());
 
@@ -570,8 +568,8 @@ bool IRGeneratorForStatements::visit(Block const& _block)
 {
 	if (_block.unchecked())
 	{
-		solAssert(m_context.arithmetic() == Arithmetic::Checked);
-		m_context.setArithmetic(Arithmetic::Wrapping);
+		solAssert(m_currentArithmeticMode == Arithmetic::Checked);
+		m_currentArithmeticMode = Arithmetic::Wrapping;
 	}
 	return true;
 }
@@ -580,8 +578,8 @@ void IRGeneratorForStatements::endVisit(Block const& _block)
 {
 	if (_block.unchecked())
 	{
-		solAssert(m_context.arithmetic() == Arithmetic::Wrapping);
-		m_context.setArithmetic(Arithmetic::Checked);
+		solAssert(m_currentArithmeticMode == Arithmetic::Wrapping);
+		m_currentArithmeticMode = Arithmetic::Checked;
 	}
 }
 
@@ -758,7 +756,7 @@ bool IRGeneratorForStatements::visit(UnaryOperation const& _unaryOperation)
 			IRVariable modifiedValue(m_context.newYulVariable(), resultType);
 			IRVariable originalValue = readFromLValue(*m_currentLValue);
 
-			bool checked = m_context.arithmetic() == Arithmetic::Checked;
+			bool checked = m_currentArithmeticMode == Arithmetic::Checked;
 			define(modifiedValue) <<
 				(op == Token::Inc ?
 					(checked ? m_utils.incrementCheckedFunction(resultType) : m_utils.incrementWrappingFunction(resultType)) :
@@ -781,7 +779,7 @@ bool IRGeneratorForStatements::visit(UnaryOperation const& _unaryOperation)
 		{
 			IntegerType const& intType = *dynamic_cast<IntegerType const*>(&resultType);
 			define(_unaryOperation) << (
-				m_context.arithmetic() == Arithmetic::Checked ?
+				m_currentArithmeticMode == Arithmetic::Checked ?
 				m_utils.negateNumberCheckedFunction(intType) :
 				m_utils.negateNumberWrappingFunction(intType)
 			) << "(" << IRVariable(_unaryOperation.subExpression()).name() << ")\n";
@@ -921,7 +919,7 @@ bool IRGeneratorForStatements::visit(BinaryOperation const& _binOp)
 		IRVariable left = convert(_binOp.leftExpression(), *commonType);
 		IRVariable right = convert(_binOp.rightExpression(), *type(_binOp.rightExpression()).mobileType());
 
-		if (m_context.arithmetic() == Arithmetic::Wrapping)
+		if (m_currentArithmeticMode == Arithmetic::Wrapping)
 			define(_binOp) << m_utils.wrappingIntExpFunction(
 				dynamic_cast<IntegerType const&>(left.type()),
 				dynamic_cast<IntegerType const&>(right.type())
@@ -2587,7 +2585,7 @@ void IRGeneratorForStatements::handleVariableReference(
 )
 {
 	if ((_variable.isStateVariable() || _variable.isFileLevelVariable()) && _variable.isConstant())
-		define(_referencingExpression) << constantValueFunction(_variable, m_context.arithmetic()) << "()\n";
+		define(_referencingExpression) << constantValueFunction(_variable, m_currentArithmeticMode) << "()\n";
 	else if (_variable.isStateVariable() && _variable.immutable())
 		setLValue(_referencingExpression, IRLValue{
 			*_variable.annotation().type,
@@ -3035,7 +3033,7 @@ std::string IRGeneratorForStatements::binaryOperation(
 		);
 		IntegerType const* type = dynamic_cast<IntegerType const*>(&_type);
 		solAssert(type);
-		bool checked = m_context.arithmetic() == Arithmetic::Checked;
+		bool checked = m_currentArithmeticMode == Arithmetic::Checked;
 		switch (_operator)
 		{
 		case Token::Add:
@@ -3333,11 +3331,11 @@ void IRGeneratorForStatements::generateLoop(
 	appendCode() << "} 1 {\n";
 	if (_loopExpression)
 	{
-		Arithmetic previousArithmetic = m_context.arithmetic();
+		Arithmetic previousArithmeticMode = m_currentArithmeticMode;
 		if (m_optimiserSettings.simpleCounterForLoopUncheckedIncrement && _isSimpleCounterLoop)
-			m_context.setArithmetic(Arithmetic::Wrapping);
+			m_currentArithmeticMode = Arithmetic::Wrapping;
 		_loopExpression->accept(*this);
-		m_context.setArithmetic(previousArithmetic);
+		m_currentArithmeticMode = previousArithmeticMode;
 	}
 	appendCode() << "}\n";
 	appendCode() << "{\n";

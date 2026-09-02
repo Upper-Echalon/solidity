@@ -252,6 +252,8 @@ private:
 	YulUtilFunctions& m_utils;
 	std::optional<IRLValue> m_currentLValue;
 	OptimiserSettings m_optimiserSettings;
+	/// Whether to use checked or wrapping arithmetic.
+	Arithmetic m_currentArithmeticMode = Arithmetic::Checked;
 };
 
 }
