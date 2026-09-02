@@ -461,9 +461,6 @@ commands:
       - attach_workspace:
           at: build
       - run_cmdline_tests
-      - store_test_results:
-          path: test_results/
-      - store_artifacts_test_results
       - matrix_notify_failure_unless_pr
 
   install_dependencies_osx:
@@ -1280,7 +1277,6 @@ jobs:
       - attach_workspace:
           at: .
       - run_cmdline_tests
-      - store_artifacts_test_results
       - matrix_notify_failure_unless_pr
 
   b_ems:
@@ -1438,9 +1434,6 @@ jobs:
             ln --symbolic --relative build/solc/solc-static-linux-arm build/solc/solc
             ln --symbolic --relative build/test/tools/solfuzzer-linux-arm build/test/tools/solfuzzer
       - run_cmdline_tests
-      - store_test_results:
-          path: test_results/
-      - store_artifacts_test_results
       - matrix_notify_failure_unless_pr
 
   t_ubu_force_release_cli: &t_ubu_force_release_cli
