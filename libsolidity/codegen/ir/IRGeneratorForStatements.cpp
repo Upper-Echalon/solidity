@@ -336,11 +336,11 @@ IRVariable IRGeneratorForStatements::evaluateExpression(Expression const& _expre
 	}
 }
 
-std::string IRGeneratorForStatements::constantValueFunction(VariableDeclaration const& _constant)
+std::string IRGeneratorForStatements::constantValueFunction(VariableDeclaration const& _constant, Arithmetic const _arithmetic)
 {
 	try
 	{
-		std::string functionName = IRNames::constantValueFunction(_constant);
+		std::string functionName = IRNames::constantValueFunction(_constant, _arithmetic);
 		return m_context.functionCollector().createFunction(functionName, [&] {
 			Whiskers templ(R"(
 				<sourceLocationComment>
@@ -352,9 +352,14 @@ std::string IRGeneratorForStatements::constantValueFunction(VariableDeclaration 
 			templ("sourceLocationComment", dispenseLocationComment(_constant, m_context));
 			templ("functionName", functionName);
 			IRGeneratorForStatements generator(m_context, m_utils, m_optimiserSettings);
+			// The constant's expression is re-evaluated at each use site and must use the
+			// arithmetic mode of the context it is referenced from.
+			Arithmetic previousArithmetic = m_context.arithmetic();
+			m_context.setArithmetic(_arithmetic);
 			solAssert(_constant.value());
 			Type const& constantType = *_constant.type();
 			templ("value", generator.evaluateExpression(*_constant.value(), constantType).commaSeparatedList());
+			m_context.setArithmetic(previousArithmetic);
 			templ("code", generator.code());
 			templ("ret", IRVariable("ret", constantType).commaSeparatedList());
 
@@ -2582,7 +2587,7 @@ void IRGeneratorForStatements::handleVariableReference(
 )
 {
 	if ((_variable.isStateVariable() || _variable.isFileLevelVariable()) && _variable.isConstant())
-		define(_referencingExpression) << constantValueFunction(_variable) << "()\n";
+		define(_referencingExpression) << constantValueFunction(_variable, m_context.arithmetic()) << "()\n";
 	else if (_variable.isStateVariable() && _variable.immutable())
 		setLValue(_referencingExpression, IRLValue{
 			*_variable.annotation().type,

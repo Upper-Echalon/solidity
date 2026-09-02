@@ -105,8 +105,8 @@ public:
 	}
 
 	/// @returns the name of a function that computes the value of the given constant
-	/// and also generates the function.
-	std::string constantValueFunction(VariableDeclaration const& _constant);
+	/// in the given arithmetic mode and also generates the function.
+	std::string constantValueFunction(VariableDeclaration const& _constant, Arithmetic _arithmetic);
 
 	void endVisit(VariableDeclarationStatement const& _variableDeclaration) override;
 	bool visit(Conditional const& _conditional) override;

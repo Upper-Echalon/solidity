@@ -9,9 +9,7 @@ contract C {
         }
     }
 }
-// ====
-// compileViaYul: true
 // ----
 // a() -> FAILURE, hex"4e487b71", 0x11
-// b() -> FAILURE, hex"4e487b71", 0x11
+// b() -> 0
 // c() -> FAILURE, hex"4e487b71", 0x11

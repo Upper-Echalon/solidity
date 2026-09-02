@@ -4,8 +4,6 @@ contract C {
     // generated.
     function f() external pure returns (uint8) { unchecked { return X; } }
 }
-// ====
-// compileViaYul: true
 // ----
 // X() -> FAILURE, hex"4e487b71", 0x11
-// f() -> FAILURE, hex"4e487b71", 0x11
+// f() -> 0x90
