@@ -159,14 +159,14 @@ at each version. Backward compatibility is not guaranteed between each version.
    - The ``staticcall`` opcode is used when calling non-library view or pure functions, which prevents the functions from modifying state at the EVM level, i.e., even applies when you use invalid type conversions.
    - It is possible to access dynamic data returned from function calls.
    - ``revert`` opcode introduced, which means that ``revert()`` will not waste gas.
-- ``constantinople``
+- ``constantinople`` (*support deprecated*)
    - Opcodes ``create2``, ``extcodehash``, ``shl``, ``shr`` and ``sar`` are available in assembly.
    - Shifting operators use shifting opcodes and thus need less gas.
-- ``petersburg``
+- ``petersburg`` (*support deprecated*)
    - The compiler behaves the same way as with constantinople.
-- ``istanbul``
+- ``istanbul`` (*support deprecated*)
    - Opcodes ``chainid`` and ``selfbalance`` are available in assembly.
-- ``berlin``
+- ``berlin`` (*support deprecated*)
    - Gas costs for ``SLOAD``, ``*CALL``, ``BALANCE``, ``EXT*`` and ``SELFDESTRUCT`` increased. The
      compiler assumes cold gas costs for such operations. This is relevant for gas estimation and
      the optimizer.
